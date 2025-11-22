@@ -1,0 +1,8 @@
+{
+  "name": "Lumi - AI Tutor Companion",
+  "description": "A real-time voice companion that helps students with homework, teaches topics, and tracks understanding using the Gemini Live API.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
