@@ -30,8 +30,8 @@ const SetupModal: React.FC<SetupModalProps> = ({ onComplete }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-8 shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-8 shadow-2xl relative overflow-hidden animate-slide-up">
         {/* Decorative background blob */}
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
         
@@ -43,7 +43,7 @@ const SetupModal: React.FC<SetupModalProps> = ({ onComplete }) => {
           <p className="text-slate-400 mb-8">Let's set up your personal study companion.</p>
 
           {step === 1 && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-4 animate-fade-in">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Child's Name</label>
                 <div className="relative">
@@ -83,7 +83,7 @@ const SetupModal: React.FC<SetupModalProps> = ({ onComplete }) => {
           )}
 
           {step === 2 && (
-            <div className="space-y-4 animate-fadeIn">
+            <div className="space-y-4 animate-fade-in">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Favorite Subject</label>
                 <div className="relative">
