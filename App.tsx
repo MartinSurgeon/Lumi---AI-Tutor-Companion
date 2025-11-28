@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag } from 'lucide-react';
+import Lumilogo from './assets/Lumilogo.png';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
@@ -90,7 +91,7 @@ const App: React.FC = () => {
   const isConnected = status === ConnectionStatus.CONNECTED;
 
   return (
-    <div className="h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
+    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
       
       {/* Cosmic Background (Animated) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -105,14 +106,25 @@ const App: React.FC = () => {
       </div>
 
       {/* Header - Compact & Transparent */}
-      <header className="w-full px-4 py-3 flex justify-between items-center z-50 bg-slate-950/20 backdrop-blur-sm border-b border-white/5 absolute top-0 left-0">
+      <header className="w-full px-4 py-3 flex justify-between items-center z-50 bg-slate-950/40 backdrop-blur-sm border-b border-white/5 fixed top-0 left-0">
         <div className="flex items-center gap-2">
-          <div className="bg-gradient-to-br from-fuchsia-500 to-violet-600 p-1.5 rounded-lg shadow-lg shadow-fuchsia-500/30">
-            <Sparkles className="text-white w-5 h-5" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl overflow-hidden bg-yellow-400 flex items-center justify-center shadow-lg shadow-yellow-500/40">
+              <img
+                src={Lumilogo}
+                alt="Lumi logo"
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold text-slate-300 uppercase tracking-[0.2em]">
+                Lumi
+              </span>
+              <span className="text-xs text-slate-400 hidden xs:block">
+                Your magical AI tutor
+              </span>
+            </div>
           </div>
-          <h1 className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-300 to-cyan-300 tracking-tight">
-            Lumi
-          </h1>
         </div>
         
         {/* Profile / Stats Pill */}
@@ -132,7 +144,7 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Layout - Responsive Split */}
-      <main className="flex-1 w-full h-full flex flex-col lg:flex-row z-10 pt-16 pb-20 md:pb-0">
+      <main className="flex-1 w-full h-full flex flex-col lg:flex-row z-10 pt-16 pb-24 md:pb-6">
         
         {/* TOP/LEFT: Visualizer & Video Call Area */}
         <div className="relative flex-[0.8] lg:flex-[1.5] flex flex-col items-center justify-center p-4 overflow-hidden border-b lg:border-b-0 lg:border-r border-white/10 bg-slate-900/30">
