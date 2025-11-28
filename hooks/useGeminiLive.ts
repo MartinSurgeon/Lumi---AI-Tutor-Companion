@@ -241,12 +241,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const connect = useCallback(async () => {
     if (!profile) return;
     
-    // Prevent multiple simultaneous connection attempts
-    if (status === ConnectionStatus.CONNECTING || status === ConnectionStatus.CONNECTED) {
-      console.log("Connection already in progress or connected. Ignoring duplicate connect call.");
-      return;
-    }
-    
     // Reset retries if manually connecting
     if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
        reconnectAttemptsRef.current = 0;
@@ -254,39 +248,19 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
     const establishConnection = async () => {
         try {
-            console.log("Starting connection establishment...");
             setStatus(ConnectionStatus.CONNECTING);
             
             // 1. Enforce API Key Selection
             const win = window as any;
-            let apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-            
-            // Try to get API key from AI Studio interface if available
             if (win.aistudio) {
                 const hasKey = await win.aistudio.hasSelectedApiKey();
                 if (!hasKey) {
-                    await win.aistudio.openSelectKey();
+                await win.aistudio.openSelectKey();
                 }
-                // AI Studio might provide the key through their interface
-                // If still no key, we'll check below
             }
 
-            // 2. Validate API Key
-            if (!apiKey || apiKey === 'undefined' || apiKey.trim() === '') {
-                const errorMsg = "API Key is required. Please set GEMINI_API_KEY in your .env.local file or configure it in AI Studio.";
-                console.error(errorMsg);
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ ${errorMsg} Get your API key from: https://aistudio.google.com/app/apikey`,
-                    timestamp: new Date()
-                }]);
-                setStatus(ConnectionStatus.ERROR);
-                return;
-            }
-
-            // 3. Initialize AI
-            aiRef.current = new GoogleGenAI({ apiKey: apiKey });
+            // 2. Initialize AI
+            aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
             // Setup Audio Contexts
             inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -301,51 +275,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
             outputGainNodeRef.current.connect(outputAnalyzerRef.current);
             outputAnalyzerRef.current.connect(outputAudioContextRef.current.destination);
 
-            // Check if mediaDevices is available (use optional chaining to avoid errors)
-            if (!navigator.mediaDevices?.getUserMedia) {
-                const isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const errorMsg = !isSecure
-                    ? "Microphone access requires HTTPS or localhost. Please access the app via https:// or localhost."
-                    : "Microphone access is not available. Your browser may not support media devices, or permissions are blocked.";
-                
-                console.error("mediaDevices check failed:", {
-                    mediaDevices: navigator.mediaDevices,
-                    isSecure: isSecure,
-                    protocol: window.location.protocol,
-                    hostname: window.location.hostname
-                });
-                
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ ${errorMsg}`,
-                    timestamp: new Date()
-                }]);
-                setStatus(ConnectionStatus.ERROR);
-                return;
-            }
-
             // Get Microphone Stream
-            let stream: MediaStream;
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            } catch (mediaError: any) {
-                const errorMsg = mediaError.name === 'NotAllowedError' 
-                    ? "Microphone permission denied. Please allow microphone access and try again."
-                    : mediaError.name === 'NotFoundError'
-                    ? "No microphone found. Please connect a microphone and try again."
-                    : `Failed to access microphone: ${mediaError.message}`;
-                
-                console.error("getUserMedia error:", mediaError);
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ ${errorMsg}`,
-                    timestamp: new Date()
-                }]);
-                setStatus(ConnectionStatus.ERROR);
-                return;
-            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
             const systemInstructionText = `
                 You are Lumi, a magical, high-energy AI tutor for ${profile.name} (${profile.grade}).
@@ -353,7 +284,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 CORE IDENTITY:
                 - You are a friendly, encouraging mentor.
                 - You speak quickly, clearly, and with enthusiasm.
-                - You should greet the user warmly when they first connect. Make them feel welcomed and excited to learn.
+                - You NEVER start by saying "Hello" or "Hi" yourself. Wait for the user to speak first.
                 
                 VISION CAPABILITY:
                 - You can SEE. You receive video frames of the user and their environment.
@@ -362,10 +293,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 - If the camera is on but you don't see anything specific, just chat face-to-face.
 
                 STARTUP TASK:
-                - When the connection is first established, IMMEDIATELY welcome ${profile.name} with enthusiasm! 
-                - Say something like: "Hey ${profile.name}! I'm so excited to help you learn today! I'm here to help with ${profile.favoriteSubject || 'your studies'}. What would you like to work on? Do you have any homework or a topic you'd like to explore?"
-                - Be warm, energetic, and inviting right from the start.
-                - Don't wait for the user to speak first - greet them immediately!
+                - Wait for the user to speak. Once they do, ask: "How much homework do you have today, and what subjects are they in?"
                 
                 ADAPTIVE LEARNING PROTOCOL:
                 1. TRACKING: Continuously assess ${profile.name}'s understanding (0-100%).
@@ -396,59 +324,33 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 model: 'gemini-2.5-flash-native-audio-preview-09-2025',
                 callbacks: {
                 onopen: async () => {
-                    console.log("Session connected successfully");
-                    console.log("Profile:", profile);
+                    console.log("Session connected");
                     reconnectAttemptsRef.current = 0; // Reset retries on success
                     setStatus(ConnectionStatus.CONNECTED);
                     
-                    try {
-                        // Start Audio Contexts
-                        if (inputAudioContextRef.current?.state === 'suspended') {
-                            await inputAudioContextRef.current.resume();
-                            console.log("Input audio context resumed");
-                        }
-                        if (outputAudioContextRef.current?.state === 'suspended') {
-                            await outputAudioContextRef.current.resume();
-                            console.log("Output audio context resumed");
-                        }
-                        
-                        // Add welcome message from Lumi immediately
-                        setTimeout(() => {
-                            const welcomeText = profile.favoriteSubject 
-                                ? `Hey ${profile.name}! I'm so excited to help you learn today! I'm here to help with ${profile.favoriteSubject}. What would you like to work on?`
-                                : `Hey ${profile.name}! I'm so excited to help you learn today! What would you like to work on? Do you have any homework or a topic you'd like to explore?`;
-                            
-                            setMessages(prev => [...prev, {
-                                id: Date.now().toString(),
-                                role: 'assistant',
-                                text: welcomeText,
-                                timestamp: new Date()
-                            }]);
-                            
-                            // Also trigger Lumi to speak the welcome
-                            sessionPromiseRef.current?.then(session => {
-                                console.log("Triggering welcome message...");
-                                // Send a trigger to make Lumi speak
-                                if ((session as any).send) {
-                                    try {
-                                        (session as any).send({ 
-                                            client_content: {
-                                                turns: [{ role: 'user', parts: [{ text: `Hi Lumi! I'm ready to learn.` }] }],
-                                                turn_complete: true
-                                            } 
-                                        });
-                                        console.log("Welcome trigger sent successfully");
-                                    } catch (sendErr) {
-                                        console.error("Error sending welcome trigger:", sendErr);
-                                    }
-                                }
-                            }).catch(err => {
-                                console.error("Error in session promise during welcome:", err);
-                            });
-                        }, 800);
-                    } catch (openErr) {
-                        console.error("Error in onopen callback:", openErr);
+                    // Start Audio Contexts
+                    if (inputAudioContextRef.current?.state === 'suspended') {
+                        await inputAudioContextRef.current.resume();
                     }
+                    if (outputAudioContextRef.current?.state === 'suspended') {
+                        await outputAudioContextRef.current.resume();
+                    }
+                    
+                    // Send Initial Handshake - Greeting text
+                    // Added small delay to ensure socket is ready
+                    setTimeout(() => {
+                        sessionPromiseRef.current?.then(session => {
+                            // Try sending handshake text
+                            if ((session as any).send) {
+                                (session as any).send({ 
+                                    client_content: {
+                                        turns: [{ role: 'user', parts: [{ text: `Hello! I am ${profile.name}.` }] }],
+                                        turn_complete: true
+                                    } 
+                                });
+                            }
+                        });
+                    }, 500);
                     
                     // Setup Microphone Logic
                     if (!inputAudioContextRef.current) return;
@@ -711,51 +613,23 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         }
                     }
                 },
-                onclose: (event?: any) => {
-                    console.log("Session closed", event);
-                    
-                    // Check close reason for API key errors
-                    const closeReason = event?.reason || '';
-                    const closeCode = event?.code;
-                    
-                    let errorMessage = "⚠️ Connection closed unexpectedly.";
-                    
-                    if (closeReason?.includes('API key') || closeReason?.includes('valid API key') || closeCode === 1007) {
-                        errorMessage = "⚠️ Invalid or Missing API Key. Please check your .env.local file and make sure GEMINI_API_KEY is set correctly. Get your key from: https://aistudio.google.com/app/apikey";
-                        setStatus(ConnectionStatus.ERROR);
-                    } else if (status === ConnectionStatus.CONNECTED) {
-                        errorMessage = "⚠️ Connection closed unexpectedly. Check console for details.";
-                    }
-                    
-                    setMessages(prev => [...prev, {
-                        id: Date.now().toString(),
-                        role: 'system',
-                        text: errorMessage,
-                        timestamp: new Date()
-                    }]);
-                    
+                onclose: () => {
+                    console.log("Session closed");
                     setStatus(ConnectionStatus.DISCONNECTED);
-                    
-                    // Prevent automatic reconnection on close - let user manually reconnect
-                    reconnectAttemptsRef.current = 0;
                 },
                 onerror: (err: any) => {
                     console.error("Gemini Live Error:", err);
-                    console.error("Error details:", JSON.stringify(err, null, 2));
                     
-                    // Show user-friendly error message
-                    let errorMessage = "Connection error occurred.";
-                    if (err.message?.includes('403') || err.code === 403) {
-                        errorMessage = "⚠️ Permission Denied. Please check your API Key.";
-                        setStatus(ConnectionStatus.ERROR);
-                    } else if (err.message?.includes('401') || err.code === 401) {
-                        errorMessage = "⚠️ Invalid API Key. Please check your API Key.";
-                        setStatus(ConnectionStatus.ERROR);
-                    } else if (err.message?.includes('network') || err.message?.includes('fetch')) {
-                        errorMessage = "⚠️ Network error. Please check your internet connection.";
+                    if (err.message?.includes('403')) {
+                        setMessages(prev => [...prev, {
+                            id: Date.now().toString(),
+                            role: 'system',
+                            text: "⚠️ Permission Denied. Check API Key.",
+                            timestamp: new Date()
+                        }]);
                         setStatus(ConnectionStatus.ERROR);
                     } else {
-                        // Retry logic for other errors
+                        // Retry logic
                         if (reconnectAttemptsRef.current < MAX_RETRIES) {
                             reconnectAttemptsRef.current++;
                             console.log(`Connection error. Retrying ${reconnectAttemptsRef.current}/${MAX_RETRIES}...`);
@@ -764,19 +638,10 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                             disconnect().then(() => {
                                 setTimeout(establishConnection, 2000);
                             });
-                            return; // Don't show error message if retrying
                         } else {
-                            errorMessage = `⚠️ Connection failed after ${MAX_RETRIES} attempts. Please try again.`;
                             setStatus(ConnectionStatus.ERROR);
                         }
                     }
-                    
-                    setMessages(prev => [...prev, {
-                        id: Date.now().toString(),
-                        role: 'system',
-                        text: errorMessage,
-                        timestamp: new Date()
-                    }]);
                 }
                 },
                 config: {
@@ -793,49 +658,12 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 }
             };
 
-            console.log("Attempting to connect to Gemini Live API...");
             const sessionPromise = aiRef.current.live.connect(config);
             sessionPromiseRef.current = sessionPromise;
-            
-            // Wait for session to be established and log any errors
-            sessionPromise.catch((err: any) => {
-                console.error("Session promise rejected:", err);
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ Failed to establish connection: ${err.message || 'Unknown error'}`,
-                    timestamp: new Date()
-                }]);
-                setStatus(ConnectionStatus.ERROR);
-            });
-            
-            // Resolve session to ensure connection is established
-            try {
-                const session = await sessionPromise;
-                console.log("Session promise resolved, session object:", session);
-            } catch (sessionErr: any) {
-                console.error("Error resolving session promise:", sessionErr);
-                // Error will be handled by onerror callback
-            }
 
-        } catch (error: any) {
+        } catch (error) {
             console.error("Connection setup failed", error);
-            
-            // Check for mediaDevices errors specifically
-            if (error?.message?.includes('mediaDevices') || error?.message?.includes('getUserMedia')) {
-                const errorMsg = "Microphone access is required but not available. Please ensure you're using HTTPS or localhost.";
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ ${errorMsg}`,
-                    timestamp: new Date()
-                }]);
-                setStatus(ConnectionStatus.ERROR);
-                return;
-            }
-            
-            // Don't retry on mediaDevices errors
-            if (reconnectAttemptsRef.current < MAX_RETRIES && !error?.message?.includes('mediaDevices')) {
+            if (reconnectAttemptsRef.current < MAX_RETRIES) {
                 reconnectAttemptsRef.current++;
                 console.log(`Setup failed. Retrying ${reconnectAttemptsRef.current}/${MAX_RETRIES}...`);
                 setStatus(ConnectionStatus.CONNECTING);
@@ -844,12 +672,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 });
             } else {
                 setStatus(ConnectionStatus.ERROR);
-                setMessages(prev => [...prev, {
-                    id: Date.now().toString(),
-                    role: 'system',
-                    text: `⚠️ Connection failed: ${error?.message || 'Unknown error'}`,
-                    timestamp: new Date()
-                }]);
             }
         }
     };
