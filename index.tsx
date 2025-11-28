@@ -13,3 +13,23 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+    const isSecure = window.location.protocol === 'https:';
+
+    if (isSecure || isLocalhost) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          console.log('Service worker registered:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('Service worker registration failed:', error);
+        });
+    }
+  });
+}
