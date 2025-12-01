@@ -66,9 +66,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     difficultyLevel: 'Beginner',
   });
 
-  // Audio Contexts
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
+  // Audio Context - Unified for Mobile Compatibility
+  const audioContextRef = useRef<AudioContext | null>(null);
   
   // Processing Nodes
   const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -116,7 +115,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const disconnect = useCallback(async () => {
     isLiveRef.current = false;
 
-    // Cleanup audio
+    // Cleanup audio nodes
     if (inputSourceRef.current) {
         try { inputSourceRef.current.disconnect(); } catch(e) {}
     }
@@ -131,12 +130,13 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     });
     audioSourcesRef.current.clear();
 
-    // Close AudioContexts
-    if (inputAudioContextRef.current?.state !== 'closed') {
-      await inputAudioContextRef.current?.close();
-    }
-    if (outputAudioContextRef.current?.state !== 'closed') {
-      await outputAudioContextRef.current?.close();
+    // Close AudioContext
+    if (audioContextRef.current?.state !== 'closed') {
+      try {
+        await audioContextRef.current?.close();
+      } catch (e) {
+        // ignore
+      }
     }
 
     // Clear video interval
@@ -167,7 +167,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   }, []);
 
   const playFeedbackSound = useCallback((type: 'success' | 'notification') => {
-    const ctx = outputAudioContextRef.current;
+    const ctx = audioContextRef.current;
     if (!ctx) return;
     
     try {
@@ -260,18 +260,17 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     }
     isLiveRef.current = false;
 
-    // Initialize Audio Contexts immediately (User Gesture)
-    if (!inputAudioContextRef.current || inputAudioContextRef.current.state === 'closed') {
-        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (!outputAudioContextRef.current || outputAudioContextRef.current.state === 'closed') {
-        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Unified Audio Context for Mobile Compatibility
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass({ latencyHint: 'interactive' });
     }
 
-    // Resume immediately to unlock audio on some browsers
+    // Resume immediately to unlock audio on some browsers (User Gesture)
     try {
-        if (inputAudioContextRef.current.state === 'suspended') await inputAudioContextRef.current.resume();
-        if (outputAudioContextRef.current.state === 'suspended') await outputAudioContextRef.current.resume();
+        if (audioContextRef.current.state === 'suspended') {
+            await audioContextRef.current.resume();
+        }
     } catch (e) {
         console.warn("Audio Context resume failed", e);
     }
@@ -292,15 +291,17 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
             // 2. Initialize AI
             aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-            // Setup Analyzers (Re-create if needed or reuse)
-            if (!inputAnalyzerRef.current) inputAnalyzerRef.current = inputAudioContextRef.current!.createAnalyser();
-            if (!outputAnalyzerRef.current) outputAnalyzerRef.current = outputAudioContextRef.current!.createAnalyser();
+            const ctx = audioContextRef.current!;
+
+            // Setup Analyzers
+            if (!inputAnalyzerRef.current) inputAnalyzerRef.current = ctx.createAnalyser();
+            if (!outputAnalyzerRef.current) outputAnalyzerRef.current = ctx.createAnalyser();
             
             // Setup Output Node
             if (!outputGainNodeRef.current) {
-                outputGainNodeRef.current = outputAudioContextRef.current!.createGain();
+                outputGainNodeRef.current = ctx.createGain();
                 outputGainNodeRef.current.connect(outputAnalyzerRef.current!);
-                outputAnalyzerRef.current!.connect(outputAudioContextRef.current!.destination);
+                outputAnalyzerRef.current!.connect(ctx.destination);
             }
 
             // Get Microphone Stream with Mobile-Friendly Constraints
@@ -309,6 +310,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
+                    sampleRate: 16000, // Try to request 16k directly if possible
                 } 
             });
             
@@ -381,18 +383,21 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     }, 500);
                     
                     // Setup Microphone Logic
-                    if (!inputAudioContextRef.current) return;
+                    const currentCtx = audioContextRef.current;
+                    if (!currentCtx) return;
                     
-                    inputSourceRef.current = inputAudioContextRef.current.createMediaStreamSource(stream);
+                    inputSourceRef.current = currentCtx.createMediaStreamSource(stream);
                     inputSourceRef.current.connect(inputAnalyzerRef.current!); 
                     
-                    processorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
+                    // Use ScriptProcessor for input capture (compatible with iOS/older browsers)
+                    // Note: AudioWorklet is preferred for modern apps but harder to bundle in a single file
+                    processorRef.current = currentCtx.createScriptProcessor(4096, 1, 1);
                     
                     processorRef.current.onaudioprocess = (e) => {
                         if (isMuted || !isLiveRef.current) return; // Block audio if not ready
                         
                         const inputData = e.inputBuffer.getChannelData(0);
-                        const downsampledData = downsampleTo16000(inputData, inputAudioContextRef.current!.sampleRate);
+                        const downsampledData = downsampleTo16000(inputData, currentCtx.sampleRate);
                         const pcmBlob = createPcmBlob(downsampledData);
                         
                         sessionPromiseRef.current?.then(session => {
@@ -402,11 +407,11 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
                     inputSourceRef.current.connect(processorRef.current);
                     
-                    // Silence node to prevent feedback
-                    const silenceNode = inputAudioContextRef.current.createGain();
+                    // Silence node to prevent feedback & keep processor alive on iOS
+                    const silenceNode = currentCtx.createGain();
                     silenceNode.gain.value = 0;
                     processorRef.current.connect(silenceNode);
-                    silenceNode.connect(inputAudioContextRef.current.destination);
+                    silenceNode.connect(currentCtx.destination);
                 },
                 onmessage: async (message: LiveServerMessage) => {
                     const serverContent = message.serverContent;
@@ -429,9 +434,9 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     // 1. Audio Output with Fade Envelope
                     const parts = message.serverContent?.modelTurn?.parts || [];
                     for (const part of parts) {
-                        if (part.inlineData?.data && outputAudioContextRef.current && outputGainNodeRef.current) {
+                        if (part.inlineData?.data && audioContextRef.current && outputGainNodeRef.current) {
                             const base64Audio = part.inlineData.data;
-                            const ctx = outputAudioContextRef.current;
+                            const ctx = audioContextRef.current;
                             nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
                             
                             try {
@@ -471,8 +476,10 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                     audioSourcesRef.current.delete(source);
                                     // Disconnect nodes to free memory
                                     setTimeout(() => {
-                                      source.disconnect();
-                                      segmentGain.disconnect();
+                                      try {
+                                        source.disconnect();
+                                        segmentGain.disconnect();
+                                      } catch(e) {}
                                     }, 100);
                                 });
                                 
