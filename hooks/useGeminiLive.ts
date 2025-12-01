@@ -304,14 +304,29 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 outputAnalyzerRef.current!.connect(ctx.destination);
             }
 
-            // Get Microphone Stream with Mobile-Friendly Constraints
+            // Get Microphone Stream with Mobile-Friendly + Secure Context Constraints
+            const w = window as any;
+            const isSecure = typeof w.isSecureContext === 'boolean'
+              ? w.isSecureContext
+              : window.location.protocol === 'https:';
+
+            if (!isSecure && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+              console.error('Microphone requires a secure context (HTTPS or localhost). Current context is not secure.');
+              throw new Error('Microphone access is blocked because this page is not using HTTPS. On mobile, please open Lumi via an HTTPS URL (for example using ngrok) or use localhost on the same device.');
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+              console.error('mediaDevices.getUserMedia is not available in this browser.');
+              throw new Error('Microphone is not available in this browser. Please try a modern browser like Chrome or Safari.');
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: 16000, // Try to request 16k directly if possible
-                } 
+              audio: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                  sampleRate: 16000, // Try to request 16k directly if possible
+              } 
             });
             
             const systemInstructionText = `
