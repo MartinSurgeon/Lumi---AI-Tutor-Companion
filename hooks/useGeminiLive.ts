@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
 import { StudentProfile, ConnectionStatus, Message, ImageResolution, LearningStats } from '../types';
@@ -79,6 +80,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const aiRef = useRef<GoogleGenAI | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const MAX_RETRIES = 3;
+  const isLiveRef = useRef(false); // Guard to prevent sending data before handshake
 
   // Playback Queue
   const nextStartTimeRef = useRef<number>(0);
@@ -112,6 +114,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   }, []);
 
   const disconnect = useCallback(async () => {
+    isLiveRef.current = false;
+
     // Cleanup audio
     if (inputSourceRef.current) {
         try { inputSourceRef.current.disconnect(); } catch(e) {}
@@ -141,8 +145,17 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
       videoIntervalRef.current = null;
     }
 
-    // Close session
+    // Close session gracefully
     if (sessionPromiseRef.current) {
+        sessionPromiseRef.current.then(session => {
+            try {
+                if (typeof session.close === 'function') {
+                    session.close();
+                }
+            } catch (e) {
+                console.warn("Error closing session", e);
+            }
+        });
         sessionPromiseRef.current = null;
     }
 
@@ -245,6 +258,23 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
        reconnectAttemptsRef.current = 0;
     }
+    isLiveRef.current = false;
+
+    // Initialize Audio Contexts immediately (User Gesture)
+    if (!inputAudioContextRef.current || inputAudioContextRef.current.state === 'closed') {
+        inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (!outputAudioContextRef.current || outputAudioContextRef.current.state === 'closed') {
+        outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+
+    // Resume immediately to unlock audio on some browsers
+    try {
+        if (inputAudioContextRef.current.state === 'suspended') await inputAudioContextRef.current.resume();
+        if (outputAudioContextRef.current.state === 'suspended') await outputAudioContextRef.current.resume();
+    } catch (e) {
+        console.warn("Audio Context resume failed", e);
+    }
 
     const establishConnection = async () => {
         try {
@@ -262,18 +292,16 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
             // 2. Initialize AI
             aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-            // Setup Audio Contexts
-            inputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-            outputAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-
-            // Setup Analyzers
-            inputAnalyzerRef.current = inputAudioContextRef.current.createAnalyser();
-            outputAnalyzerRef.current = outputAudioContextRef.current.createAnalyser();
+            // Setup Analyzers (Re-create if needed or reuse)
+            if (!inputAnalyzerRef.current) inputAnalyzerRef.current = inputAudioContextRef.current!.createAnalyser();
+            if (!outputAnalyzerRef.current) outputAnalyzerRef.current = outputAudioContextRef.current!.createAnalyser();
             
             // Setup Output Node
-            outputGainNodeRef.current = outputAudioContextRef.current.createGain();
-            outputGainNodeRef.current.connect(outputAnalyzerRef.current);
-            outputAnalyzerRef.current.connect(outputAudioContextRef.current.destination);
+            if (!outputGainNodeRef.current) {
+                outputGainNodeRef.current = outputAudioContextRef.current!.createGain();
+                outputGainNodeRef.current.connect(outputAnalyzerRef.current!);
+                outputAnalyzerRef.current!.connect(outputAudioContextRef.current!.destination);
+            }
 
             // Get Microphone Stream
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -328,16 +356,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     reconnectAttemptsRef.current = 0; // Reset retries on success
                     setStatus(ConnectionStatus.CONNECTED);
                     
-                    // Start Audio Contexts
-                    if (inputAudioContextRef.current?.state === 'suspended') {
-                        await inputAudioContextRef.current.resume();
-                    }
-                    if (outputAudioContextRef.current?.state === 'suspended') {
-                        await outputAudioContextRef.current.resume();
-                    }
-                    
                     // Send Initial Handshake - Greeting text
-                    // Added small delay to ensure socket is ready
+                    // Added delay to ensure socket is ready, THEN enable audio streaming
                     setTimeout(() => {
                         sessionPromiseRef.current?.then(session => {
                             // Try sending handshake text
@@ -349,6 +369,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                     } 
                                 });
                             }
+                            // Enable Audio Streaming AFTER handshake
+                            isLiveRef.current = true;
                         });
                     }, 500);
                     
@@ -361,7 +383,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     processorRef.current = inputAudioContextRef.current.createScriptProcessor(4096, 1, 1);
                     
                     processorRef.current.onaudioprocess = (e) => {
-                        if (isMuted) return; 
+                        if (isMuted || !isLiveRef.current) return; // Block audio if not ready
                         
                         const inputData = e.inputBuffer.getChannelData(0);
                         const downsampledData = downsampleTo16000(inputData, inputAudioContextRef.current!.sampleRate);
@@ -384,8 +406,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     const serverContent = message.serverContent;
                     
                     // 0. EARLY COMMIT: Detect if model is starting to respond
-                    // If the model sends audio or text, it means the user's turn is definitely over.
-                    // We commit the pending user input immediately so it doesn't stay as "live input".
                     const hasModelAudio = message.serverContent?.modelTurn?.parts?.some(p => p.inlineData);
                     const hasModelText = !!message.serverContent?.outputTranscription;
 
@@ -571,7 +591,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         
                         // Handle turn completion
                         if (serverContent.turnComplete) {
-                            // If user input is still pending (rare, usually caught by early commit above), commit it now
                             if (currentInputRef.current.trim()) {
                                 setMessages(prev => [...prev, {
                                     id: Date.now().toString(),
@@ -582,7 +601,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                 currentInputRef.current = '';
                                 setLiveInput('');
                             }
-                            // Commit model output
                             if (currentOutputRef.current.trim()) {
                                 setMessages(prev => [...prev, {
                                     id: (Date.now() + 1).toString(),
@@ -615,10 +633,12 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 },
                 onclose: () => {
                     console.log("Session closed");
+                    isLiveRef.current = false;
                     setStatus(ConnectionStatus.DISCONNECTED);
                 },
                 onerror: (err: any) => {
                     console.error("Gemini Live Error:", err);
+                    isLiveRef.current = false;
                     
                     if (err.message?.includes('403')) {
                         setMessages(prev => [...prev, {
@@ -682,7 +702,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
   // Video Streaming Logic
   useEffect(() => {
-    if (isVideoActive && status === ConnectionStatus.CONNECTED && videoRef.current && canvasRef.current) {
+    if (isVideoActive && status === ConnectionStatus.CONNECTED && videoRef.current && canvasRef.current && isLiveRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       const video = videoRef.current;
 

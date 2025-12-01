@@ -2,34 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lumi - AI Tutor</title>
-    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" crossorigin="anonymous">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
       body {
-        font-family: 'Sora', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: linear-gradient(to bottom, #f0f4ff, #faf5ff, #fdf2f8);
-        color: #0f172a;
+        font-family: 'Nunito', sans-serif;
+        background-color: #0f172a;
+        color: white;
       }
       /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f5f9; 
+        background: #1e293b; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
+        background: #475569; 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
+        background: #64748b; 
       }
 
       /* Custom Animations */
@@ -123,60 +118,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-    <script>
-      // Debug: Log current URL
-      console.log('Page loading from:', window.location.href);
-      console.log('Hostname:', window.location.hostname);
-      
-      // Ensure Tailwind CSS is loaded
-      const checkTailwind = () => {
-        if (typeof tailwind === 'undefined' && !document.querySelector('script[src*="tailwindcss"][data-loaded]')) {
-          console.warn('Tailwind CSS not loaded, attempting to load...');
-          const existingScript = document.querySelector('script[src*="tailwindcss"]');
-          if (existingScript) {
-            existingScript.setAttribute('data-loaded', 'true');
-            // Wait a bit and check again
-            setTimeout(() => {
-              if (typeof tailwind === 'undefined') {
-                console.error('Tailwind CSS still not available after load');
-              } else {
-                console.log('Tailwind CSS loaded successfully');
-                window.dispatchEvent(new Event('tailwind-loaded'));
-              }
-            }, 500);
-          } else {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.tailwindcss.com';
-            script.crossOrigin = 'anonymous';
-            script.setAttribute('data-loaded', 'true');
-            script.onload = () => {
-              console.log('Tailwind CSS loaded successfully (fallback)');
-              window.dispatchEvent(new Event('tailwind-loaded'));
-            };
-            script.onerror = () => {
-              console.error('Failed to load Tailwind CSS from CDN');
-            };
-            document.head.appendChild(script);
-          }
-        } else {
-          console.log('Tailwind CSS already available');
-          window.dispatchEvent(new Event('tailwind-loaded'));
-        }
-      };
-      
-      // Check after DOM is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', checkTailwind);
-      } else {
-        setTimeout(checkTailwind, 100);
-      }
-      
-      // Check if fonts are loaded
-      document.fonts.ready.then(() => {
-        console.log('Fonts loaded successfully');
-      }).catch(err => {
-        console.warn('Font loading issue:', err);
-      });
-    </script>
   </body>
 </html>
