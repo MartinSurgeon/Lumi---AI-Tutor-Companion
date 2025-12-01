@@ -303,8 +303,14 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 outputAnalyzerRef.current!.connect(outputAudioContextRef.current!.destination);
             }
 
-            // Get Microphone Stream
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Get Microphone Stream with Mobile-Friendly Constraints
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                } 
+            });
             
             const systemInstructionText = `
                 You are Lumi, a magical, high-energy AI tutor for ${profile.name} (${profile.grade}).

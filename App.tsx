@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
@@ -11,6 +12,7 @@ const App: React.FC = () => {
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [teacherInput, setTeacherInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -36,16 +38,20 @@ const App: React.FC = () => {
   // Handle Camera Stream locally for the video element
   useEffect(() => {
     if (isVideoActive) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        })
-        .catch(err => {
-          console.error("Camera access denied", err);
-          setIsVideoActive(false);
-        });
+      navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: cameraFacingMode 
+        } 
+      })
+      .then(stream => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      })
+      .catch(err => {
+        console.error("Camera access denied", err);
+        setIsVideoActive(false);
+      });
     } else {
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
@@ -53,7 +59,11 @@ const App: React.FC = () => {
         videoRef.current.srcObject = null;
       }
     }
-  }, [isVideoActive, setIsVideoActive]);
+  }, [isVideoActive, setIsVideoActive, cameraFacingMode]);
+
+  const toggleCamera = () => {
+    setCameraFacingMode(prev => prev === 'user' ? 'environment' : 'user');
+  };
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -108,7 +118,7 @@ const App: React.FC = () => {
       <header className="w-full px-4 py-3 flex justify-between items-center z-50 bg-slate-950/20 backdrop-blur-sm border-b border-white/5 absolute top-0 left-0">
         <div className="flex items-center gap-2">
           <div className="bg-gradient-to-br from-fuchsia-500 to-violet-600 p-1.5 rounded-lg shadow-lg shadow-fuchsia-500/30">
-            <Sparkles className="text-white w-5 h-5" />
+            <Ghost className="text-white w-5 h-5" />
           </div>
           <h1 className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-300 to-cyan-300 tracking-tight">
             Lumi
@@ -144,7 +154,7 @@ const App: React.FC = () => {
                autoPlay 
                playsInline 
                muted 
-               className={`w-full h-full object-cover transform scale-x-[-1] transition-opacity duration-700 ${isVideoActive ? 'opacity-100' : 'opacity-0'}`} 
+               className={`w-full h-full object-cover transition-opacity duration-700 ${isVideoActive ? 'opacity-100' : 'opacity-0'} ${cameraFacingMode === 'user' ? 'transform scale-x-[-1]' : ''}`} 
              />
              
              {/* VISUAL ANALYSIS HUD (Shown only when video is active) */}
@@ -310,7 +320,7 @@ const App: React.FC = () => {
                               : 'bg-gradient-to-br from-fuchsia-600 to-violet-600 border-white/20'
                             }
                           `}>
-                            {msg.role === 'user' ? <User size={18} className="text-white"/> : <Sparkles size={18} className="text-white"/>}
+                            {msg.role === 'user' ? <User size={18} className="text-white"/> : <Ghost size={18} className="text-white"/>}
                           </div>
 
                           {/* Message Content */}
@@ -463,6 +473,17 @@ const App: React.FC = () => {
                   >
                     {isVideoActive ? <Video size={22} /> : <VideoOff size={22} />}
                   </button>
+                  
+                  {/* Switch Camera Button - Only Visible when Video is Active */}
+                  {isVideoActive && (
+                    <button 
+                      onClick={toggleCamera}
+                      className="p-3.5 rounded-full bg-slate-700 text-white hover:bg-slate-600 transition-all duration-300"
+                      title="Switch Camera"
+                    >
+                      <RefreshCw size={22} className={cameraFacingMode === 'environment' ? 'rotate-180' : ''} />
+                    </button>
+                  )}
 
                   {/* Teacher Mode Toggle */}
                   <button
