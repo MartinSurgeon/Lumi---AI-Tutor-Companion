@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { StudentProfile } from '../types';
-import { BookOpen, User, GraduationCap, Brain, Sparkles } from 'lucide-react';
+import { BookOpen, User, GraduationCap, Brain, Ghost } from 'lucide-react';
 
 interface SetupModalProps {
   onComplete: (profile: StudentProfile) => void;
@@ -37,7 +38,9 @@ const SetupModal: React.FC<SetupModalProps> = ({ onComplete }) => {
         
         <div className="relative z-10">
           <h2 className="text-3xl font-bold text-white mb-2 flex items-center gap-2">
-            <Sparkles className="text-yellow-400" />
+            <div className="bg-gradient-to-br from-fuchsia-500 to-violet-600 p-1.5 rounded-lg">
+                <Ghost className="text-white w-6 h-6" />
+            </div>
             <span>Welcome to Lumi</span>
           </h2>
           <p className="text-slate-400 mb-8">Let's set up your personal study companion.</p>
@@ -121,7 +124,7 @@ const SetupModal: React.FC<SetupModalProps> = ({ onComplete }) => {
                   onClick={handleSubmit}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-full font-semibold transition-colors flex items-center gap-2"
                 >
-                  Start Learning <Sparkles size={16} />
+                  Start Learning <Ghost size={16} />
                 </button>
               </div>
             </div>

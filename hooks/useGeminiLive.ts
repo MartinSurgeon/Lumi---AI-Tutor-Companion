@@ -118,10 +118,26 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     // Cleanup audio nodes
     if (inputSourceRef.current) {
         try { inputSourceRef.current.disconnect(); } catch(e) {}
+        inputSourceRef.current = null;
     }
     if (processorRef.current) {
       try { processorRef.current.disconnect(); } catch(e) {}
       processorRef.current.onaudioprocess = null;
+      processorRef.current = null;
+    }
+    
+    // CRITICAL: Clear analyzers and gain nodes so they aren't reused with the wrong AudioContext
+    if (inputAnalyzerRef.current) {
+        try { inputAnalyzerRef.current.disconnect(); } catch(e) {}
+        inputAnalyzerRef.current = null;
+    }
+    if (outputAnalyzerRef.current) {
+        try { outputAnalyzerRef.current.disconnect(); } catch(e) {}
+        outputAnalyzerRef.current = null;
+    }
+    if (outputGainNodeRef.current) {
+        try { outputGainNodeRef.current.disconnect(); } catch(e) {}
+        outputGainNodeRef.current = null;
     }
     
     // Stop output sources
@@ -137,6 +153,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
       } catch (e) {
         // ignore
       }
+      audioContextRef.current = null;
     }
 
     // Clear video interval
@@ -168,7 +185,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
   const playFeedbackSound = useCallback((type: 'success' | 'notification') => {
     const ctx = audioContextRef.current;
-    if (!ctx) return;
+    if (!ctx || ctx.state === 'closed') return;
     
     try {
         // Create oscillator and gain node
@@ -293,40 +310,25 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
             const ctx = audioContextRef.current!;
 
-            // Setup Analyzers
+            // Setup Analyzers (Create fresh ones if missing)
             if (!inputAnalyzerRef.current) inputAnalyzerRef.current = ctx.createAnalyser();
             if (!outputAnalyzerRef.current) outputAnalyzerRef.current = ctx.createAnalyser();
             
-            // Setup Output Node
+            // Setup Output Node (Fresh gain node)
             if (!outputGainNodeRef.current) {
                 outputGainNodeRef.current = ctx.createGain();
                 outputGainNodeRef.current.connect(outputAnalyzerRef.current!);
                 outputAnalyzerRef.current!.connect(ctx.destination);
             }
 
-            // Get Microphone Stream with Mobile-Friendly + Secure Context Constraints
-            const w = window as any;
-            const isSecure = typeof w.isSecureContext === 'boolean'
-              ? w.isSecureContext
-              : window.location.protocol === 'https:';
-
-            if (!isSecure && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-              console.error('Microphone requires a secure context (HTTPS or localhost). Current context is not secure.');
-              throw new Error('Microphone access is blocked because this page is not using HTTPS. On mobile, please open Lumi via an HTTPS URL (for example using ngrok) or use localhost on the same device.');
-            }
-
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-              console.error('mediaDevices.getUserMedia is not available in this browser.');
-              throw new Error('Microphone is not available in this browser. Please try a modern browser like Chrome or Safari.');
-            }
-
+            // Get Microphone Stream with Mobile-Friendly Constraints
             const stream = await navigator.mediaDevices.getUserMedia({ 
-              audio: {
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                  autoGainControl: true,
-                  sampleRate: 16000, // Try to request 16k directly if possible
-              } 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 16000, // Try to request 16k directly if possible
+                } 
             });
             
             const systemInstructionText = `
@@ -405,7 +407,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     inputSourceRef.current.connect(inputAnalyzerRef.current!); 
                     
                     // Use ScriptProcessor for input capture (compatible with iOS/older browsers)
-                    // Note: AudioWorklet is preferred for modern apps but harder to bundle in a single file
                     processorRef.current = currentCtx.createScriptProcessor(4096, 1, 1);
                     
                     processorRef.current.onaudioprocess = (e) => {

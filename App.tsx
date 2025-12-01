@@ -1,7 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, RefreshCw } from 'lucide-react';
-import lumilogo from './assets/lumilogo.png';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
@@ -36,47 +35,23 @@ const App: React.FC = () => {
     toggleMessageProperty
   } = useGeminiLive({ profile, videoRef, imageResolution });
 
-  // Handle Camera Stream locally for the video element (with mobile-safe guards)
+  // Handle Camera Stream locally for the video element
   useEffect(() => {
-    const startCamera = async () => {
-      const w = window as any;
-      const isSecure = typeof w.isSecureContext === 'boolean'
-        ? w.isSecureContext
-        : window.location.protocol === 'https:';
-
-      // On mobile, plain http with LAN IP is NOT a secure context and will block camera.
-      if (!isSecure && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        console.warn('Camera requires HTTPS or localhost. Current context is not secure.');
-        alert('Camera access is blocked because this page is not using HTTPS.\n\nOn mobile, please use an HTTPS tunnel (e.g. ngrok) or open Lumi via localhost on the same device.');
-        setIsVideoActive(false);
-        return;
-      }
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.error('mediaDevices.getUserMedia is not available in this browser.');
-        alert('Camera is not available in this browser. Please try a modern browser like Chrome or Safari.');
-        setIsVideoActive(false);
-        return;
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: cameraFacingMode,
-          },
-        });
+    if (isVideoActive) {
+      navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: cameraFacingMode 
+        } 
+      })
+      .then(stream => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
-      } catch (err) {
-        console.error('Camera access denied', err);
-        alert('Unable to access the camera. Please check browser permissions and make sure you allowed camera access.');
+      })
+      .catch(err => {
+        console.error("Camera access denied", err);
         setIsVideoActive(false);
-      }
-    };
-
-    if (isVideoActive) {
-      startCamera();
+      });
     } else {
       if (videoRef.current && videoRef.current.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
@@ -125,7 +100,7 @@ const App: React.FC = () => {
   const isConnected = status === ConnectionStatus.CONNECTED;
 
   return (
-    <div className="min-h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
+    <div className="h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
       
       {/* Cosmic Background (Animated) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -140,19 +115,14 @@ const App: React.FC = () => {
       </div>
 
       {/* Header - Compact & Transparent */}
-      <header className="w-full px-4 py-3 flex justify-between items-center z-50 bg-slate-950/40 backdrop-blur-sm border-b border-white/5 absolute top-0 left-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden bg-yellow-400 flex items-center justify-center shadow-lg shadow-yellow-500/40">
-            <img src={lumilogo} alt="Lumi logo" className="w-full h-full object-contain" />
+      <header className="w-full px-4 py-3 flex justify-between items-center z-50 bg-slate-950/20 backdrop-blur-sm border-b border-white/5 absolute top-0 left-0">
+        <div className="flex items-center gap-2">
+          <div className="bg-gradient-to-br from-fuchsia-500 to-violet-600 p-1.5 rounded-lg shadow-lg shadow-fuchsia-500/30">
+            <Ghost className="text-white w-5 h-5" />
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold text-slate-100 uppercase tracking-[0.25em]">
-              Lumi
-            </span>
-            <span className="text-xs text-slate-400">
-              AI Tutor Companion
-            </span>
-          </div>
+          <h1 className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-300 to-cyan-300 tracking-tight">
+            Lumi
+          </h1>
         </div>
         
         {/* Profile / Stats Pill */}
@@ -350,7 +320,7 @@ const App: React.FC = () => {
                               : 'bg-gradient-to-br from-fuchsia-600 to-violet-600 border-white/20'
                             }
                           `}>
-                            {msg.role === 'user' ? <User size={18} className="text-white"/> : <Sparkles size={18} className="text-white"/>}
+                            {msg.role === 'user' ? <User size={18} className="text-white"/> : <Ghost size={18} className="text-white"/>}
                           </div>
 
                           {/* Message Content */}
