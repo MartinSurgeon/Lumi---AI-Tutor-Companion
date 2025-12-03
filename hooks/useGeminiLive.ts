@@ -522,18 +522,30 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
                                 const generateImage = async () => {
                                     try {
-                                        const imageAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
-                                        const result = await imageAi.models.generateContent({
+                                        // Reuse existing client if possible
+                                        if (!aiRef.current) throw new Error("AI Client not initialized");
+
+                                        // Use gemini-2.5-flash-image
+                                        const result = await aiRef.current.models.generateContent({
                                             model: 'gemini-2.5-flash-image', 
                                             contents: { parts: [{ text: prompt }] },
+                                            config: {
+                                                imageConfig: {
+                                                    aspectRatio: "16:9" // Landscape for educational diagrams
+                                                }
+                                            }
                                         });
 
                                         let base64Image = null;
-                                        for (const part of result.candidates?.[0]?.content?.parts || []) {
-                                            if (part.inlineData) {
-                                                base64Image = part.inlineData.data;
-                                                break;
+                                        // Iterate all candidates/parts to find image
+                                        for (const candidate of result.candidates || []) {
+                                            for (const part of candidate.content?.parts || []) {
+                                                if (part.inlineData) {
+                                                    base64Image = part.inlineData.data;
+                                                    break;
+                                                }
                                             }
+                                            if (base64Image) break;
                                         }
 
                                         if (base64Image) {
@@ -542,7 +554,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                             setMessages(prev => [...prev, {
                                                 id: Date.now().toString(),
                                                 role: 'assistant',
-                                                text: `Here is the image you asked for:`,
+                                                text: `Here is a visualization for: ${prompt}`,
                                                 image: imageUrl,
                                                 timestamp: new Date()
                                             }]);
@@ -557,14 +569,14 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                                 });
                                             });
                                         } else {
-                                            throw new Error("No image data");
+                                            throw new Error("No image data returned from model");
                                         }
                                     } catch (err) {
                                         console.error("Image gen failed", err);
                                         setMessages(prev => [...prev, {
                                             id: Date.now().toString(),
                                             role: 'system',
-                                            text: `❌ Image failed.`,
+                                            text: `❌ Image generation failed.`,
                                             timestamp: new Date()
                                         }]);
                                         sessionPromiseRef.current?.then(session => {
@@ -572,7 +584,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                                 functionResponses: [{
                                                     id: fc.id,
                                                     name: fc.name,
-                                                    response: { result: "Image failed." }
+                                                    response: { result: "Image generation failed. Apologize to the user." }
                                                 }]
                                             });
                                         });
