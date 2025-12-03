@@ -85,13 +85,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     }
   });
 
-  // Keep a ref of learning stats for the connection closure to access current state during reconnects
-  const learningStatsRef = useRef(learningStats);
-  useEffect(() => {
-    learningStatsRef.current = learningStats;
-    localStorage.setItem('lumi_learning_stats', JSON.stringify(learningStats));
-  }, [learningStats]);
-
   // Persistence Effects
   useEffect(() => {
     try {
@@ -100,6 +93,10 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
         console.warn("Failed to save chat history (quota exceeded?)", e);
     }
   }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('lumi_learning_stats', JSON.stringify(learningStats));
+  }, [learningStats]);
 
   // Audio Context - Unified for Mobile Compatibility
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -114,10 +111,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const aiRef = useRef<GoogleGenAI | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const MAX_RETRIES = 3;
-  
-  // GUARD: Prevents auto-reconnect if the user intentionally clicked "Hang Up"
-  const isUserDisconnectRef = useRef(false);
-  
   const isLiveRef = useRef(false); // Guard to prevent sending data before handshake
 
   // Playback Queue & Scheduling
@@ -147,18 +140,12 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   useEffect(() => {
     canvasRef.current = document.createElement('canvas');
     return () => {
-      // Force user disconnect behavior on unmount
-      isUserDisconnectRef.current = true;
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const disconnect = useCallback(async () => {
-    // Only mark as user disconnect if it wasn't already triggered by system
-    // But generally, calling disconnect() directly implies user action or fatal error cleanup
-    // We update the state in the UI handlers, but here we enforce cleanup.
-    
     isLiveRef.current = false;
     setIsAiSpeaking(false);
 
@@ -231,12 +218,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     currentInputRef.current = '';
     currentOutputRef.current = '';
   }, []);
-
-  // Wrapper for manual disconnects (User clicks button)
-  const handleUserDisconnect = useCallback(() => {
-    isUserDisconnectRef.current = true;
-    disconnect();
-  }, [disconnect]);
 
   const playFeedbackSound = useCallback((type: 'success' | 'notification') => {
     const ctx = audioContextRef.current;
@@ -327,19 +308,9 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     if (!profile) return;
     
     // Per guidelines, use process.env.API_KEY
-    // For local dev with Vite, this might be handled via import.meta.env inside the build or a proxy,
-    // but the code provided previously standardized on process.env.API_KEY for the XML output.
-    // If you are using Vite locally, ensure you set up 'define' in vite.config or use import.meta.env here.
-    // For this implementation, I will check both for compatibility.
-    let apiKey = process.env.API_KEY;
-    // @ts-ignore
-    if (!apiKey && import.meta && import.meta.env) {
-         // @ts-ignore
-         apiKey = import.meta.env.VITE_API_KEY;
-    }
-
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      alert("API Key is missing! Please check your Environment Variables.");
+      alert("API Key is missing! Please check your Environment Variables (API_KEY).");
       setStatus(ConnectionStatus.ERROR);
       return;
     }
@@ -348,9 +319,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
        reconnectAttemptsRef.current = 0;
     }
-    
-    // MARKER: This is a new connection attempt, so user has NOT disconnected yet.
-    isUserDisconnectRef.current = false;
     isLiveRef.current = false;
 
     // Unified Audio Context for Mobile Compatibility
@@ -407,33 +375,41 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 } 
             });
             
-            // DYNAMIC INSTRUCTION: Inject current learning stats so the AI remembers context on reconnect
-            const currentStats = learningStatsRef.current;
             const systemInstructionText = `
                 You are Lumi, a magical, high-energy AI tutor for ${profile.name} (${profile.grade}).
-                
-                CURRENT CONTEXT (IMPORTANT):
-                - The student is currently at: ${currentStats.difficultyLevel} Level.
-                - Understanding Score: ${currentStats.understandingScore}%.
-                - If this is a new session, WELCOME them back warmly. If we just reconnected, continue the conversation naturally.
                 
                 CORE IDENTITY:
                 - You are a friendly, encouraging mentor.
                 - You speak quickly, clearly, and with enthusiasm.
-                - You NEVER start by saying "Hello" or "Hi" yourself initially. Wait for the user to speak.
+                - You NEVER start by saying "Hello" or "Hi" yourself. Wait for the user to speak first.
                 
                 VISION CAPABILITY:
                 - You can SEE. You receive video frames of the user and their environment.
                 - INTERACT VISUALLY: If the user shows you a book, worksheet, or object, describe it and use it in your teaching.
+                - Example: "I see you're holding a geometry worksheet. Let's look at problem 3 together!"
+                - If the camera is on but you don't see anything specific, just chat face-to-face.
+
+                STARTUP TASK:
+                - Wait for the user to speak. Once they do, ask: "How much homework do you have today, and what subjects are they in?"
                 
                 ADAPTIVE LEARNING PROTOCOL:
                 1. TRACKING: Continuously assess ${profile.name}'s understanding (0-100%).
+                - Correct answer + explanation = +10-20% (Score goes up)
+                - Correct answer only = +5-10%
+                - Confusion/Wrong answer = -5-10% (Score goes down)
                 2. DIFFICULTY ADJUSTMENT:
                 - 0-40% Score: Beginner Mode (Simple words, many analogies, slow pace).
                 - 41-75% Score: Intermediate Mode (Standard academic terms, normal pace).
                 - 76-100% Score: Advanced Mode (Complex synthesis, challenge questions).
-                3. CHECKPOINTS: Every 3-4 turns, ask a specific "Check for Understanding" question.
+                3. CHECKPOINTS: Every 3-4 turns, ask a specific "Check for Understanding" question to verify they are following.
                 4. VISUALS: Use 'generate_educational_image' proactively for visual topics.
+                
+                CHAIN OF THOUGHT (CoT):
+                1. ANALYZE user input (audio and video).
+                2. CALCULATE new understanding score.
+                3. CALL 'update_student_progress' if the score or difficulty changes.
+                4. PLAN the explanation based on the current Difficulty Level.
+                5. SPEAK.
                 
                 RULES:
                 - Keep verbal responses concise (max 3 sentences).
@@ -768,18 +744,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     console.log("Session closed");
                     isLiveRef.current = false;
                     setIsAiSpeaking(false);
-                    
-                    // AUTO-RECONNECT LOGIC
-                    // If the user didn't intentionally hang up (isUserDisconnectRef.current is false),
-                    // it means the server closed the session (timeout). We should reconnect immediately.
-                    if (!isUserDisconnectRef.current) {
-                        console.log("Session expired by server. Auto-reconnecting to maintain flow...");
-                        // Add a small system message to validify the state, or just reconnect silently
-                        // setMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', text: "Refreshing session...", timestamp: new Date() }]);
-                        setTimeout(establishConnection, 1000);
-                    } else {
-                        setStatus(ConnectionStatus.DISCONNECTED);
-                    }
+                    setStatus(ConnectionStatus.DISCONNECTED);
                 },
                 onerror: (err: any) => {
                     console.error("Gemini Live Error:", err);
@@ -884,7 +849,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   return {
     status,
     connect,
-    disconnect: handleUserDisconnect, // Expose the user-initiated disconnect wrapper
+    disconnect,
     isMuted,
     setIsMuted,
     isVideoActive,
