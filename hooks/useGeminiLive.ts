@@ -304,6 +304,14 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const connect = useCallback(async () => {
     if (!profile) return;
     
+    // Per guidelines, use process.env.API_KEY
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      alert("API Key is missing! Please check your Environment Variables (API_KEY).");
+      setStatus(ConnectionStatus.ERROR);
+      return;
+    }
+
     // Reset retries if manually connecting
     if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
        reconnectAttemptsRef.current = 0;
@@ -329,7 +337,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
         try {
             setStatus(ConnectionStatus.CONNECTING);
             
-            // 1. Enforce API Key Selection
+            // 1. Enforce API Key Selection (Only for Pro users using AI Studio wrapper)
             const win = window as any;
             if (win.aistudio) {
                 const hasKey = await win.aistudio.hasSelectedApiKey();
@@ -338,8 +346,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 }
             }
 
-            // 2. Initialize AI
-            aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // 2. Initialize AI with retrieved key
+            aiRef.current = new GoogleGenAI({ apiKey: apiKey });
 
             const ctx = audioContextRef.current!;
 
