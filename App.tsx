@@ -127,6 +127,7 @@ const App: React.FC = () => {
   }
 
   const isConnected = status === ConnectionStatus.CONNECTED;
+  const isConnecting = status === ConnectionStatus.CONNECTING;
 
   return (
     <div className="h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
@@ -296,10 +297,20 @@ const App: React.FC = () => {
                         {/* Primary Call To Action - Centered & Visible */}
                         <button 
                             onClick={connect}
-                            className="w-full flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-105 active:scale-95 transition-all group animate-pulse-glow"
+                            disabled={isConnecting}
+                            className={`w-full flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-105 active:scale-95 transition-all group ${isConnecting ? 'opacity-50 cursor-not-allowed' : 'animate-pulse-glow'}`}
                         >
-                            <Sparkles className="w-5 h-5 text-fuchsia-600 group-hover:rotate-12 transition-transform" />
-                            <span>Start Learning</span>
+                            {isConnecting ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Connecting...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="w-5 h-5 text-fuchsia-600 group-hover:rotate-12 transition-transform" />
+                                    <span>Start Learning</span>
+                                </>
+                            )}
                         </button>
                         
                         <div className="flex items-center justify-center gap-6 text-xs text-slate-500">
