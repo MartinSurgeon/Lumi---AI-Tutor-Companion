@@ -34,11 +34,12 @@ const App: React.FC = () => {
   }, [profile]);
 
   const handleLogout = () => {
-    if (confirm("Are you sure you want to log out? This will clear your chat history.")) {
+    if (confirm("Are you sure you want to log out?\n\nThis will delete your profile and chat history from this device.")) {
         localStorage.removeItem('lumi_student_profile');
         localStorage.removeItem('lumi_chat_history');
         localStorage.removeItem('lumi_learning_stats');
         setProfile(null);
+        // Force reload to clear all in-memory states/hooks
         window.location.reload();
     }
   };
@@ -66,7 +67,9 @@ const App: React.FC = () => {
     if (isVideoActive) {
       navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: cameraFacingMode 
+          facingMode: cameraFacingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
         } 
       })
       .then(stream => {
@@ -153,13 +156,15 @@ const App: React.FC = () => {
         
         {/* Profile / Stats Pill */}
         <div className="flex items-center gap-3 pointer-events-auto">
-           <div className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wide bg-slate-900/80 backdrop-blur-md ${
-                learningStats.difficultyLevel === 'Advanced' ? 'bg-red-900/30 border-red-500/50 text-red-300' :
-                learningStats.difficultyLevel === 'Intermediate' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
-                'bg-emerald-900/30 border-emerald-500/50 text-emerald-300'
-            }`}>
-                {learningStats.difficultyLevel} Mode
-           </div>
+           {isConnected && (
+               <div className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wide bg-slate-900/80 backdrop-blur-md ${
+                    learningStats.difficultyLevel === 'Advanced' ? 'bg-red-900/30 border-red-500/50 text-red-300' :
+                    learningStats.difficultyLevel === 'Intermediate' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
+                    'bg-emerald-900/30 border-emerald-500/50 text-emerald-300'
+                }`}>
+                    {learningStats.difficultyLevel} Mode
+               </div>
+           )}
            
            <div className="flex items-center gap-2">
                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg border-2 border-cyan-300/50">
@@ -167,7 +172,7 @@ const App: React.FC = () => {
                </div>
                <button 
                 onClick={handleLogout}
-                className="p-1.5 text-slate-400 hover:text-white transition-colors bg-black/20 rounded-full backdrop-blur-md border border-white/5"
+                className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/20 transition-all bg-black/20 rounded-full backdrop-blur-md border border-white/5"
                 title="Log Out & Clear Data"
                >
                    <LogOut size={18} />
@@ -183,7 +188,7 @@ const App: React.FC = () => {
         <div className="relative w-full h-[45dvh] lg:h-full lg:flex-[1.5] flex flex-col items-center justify-center p-4 overflow-hidden lg:border-r border-white/10 z-0">
           
           {/* VIDEO CALL BACKGROUND LAYER */}
-          <div className="absolute inset-0 z-0">
+          <div className="absolute inset-0 z-0 flex items-center justify-center">
              <video 
                ref={videoRef} 
                autoPlay 
@@ -192,30 +197,22 @@ const App: React.FC = () => {
                className={`w-full h-full object-cover transition-opacity duration-700 ${isVideoActive ? 'opacity-100' : 'opacity-0'} ${cameraFacingMode === 'user' ? 'transform scale-x-[-1]' : ''}`} 
              />
              
-             {/* VISUAL ANALYSIS HUD */}
+             {/* CLEAN VIDEO CALL OVERLAY */}
              {isVideoActive && (
-               <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute inset-4 border border-cyan-500/20 rounded-xl"></div>
-                  <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-cyan-400/60 rounded-tl-xl"></div>
-                  <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-cyan-400/60 rounded-tr-xl"></div>
-                  <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-cyan-400/60 rounded-bl-xl"></div>
-                  <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-cyan-400/60 rounded-br-xl"></div>
-                  <div className="absolute left-0 w-full h-0.5 bg-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-scan"></div>
-                  <div className="absolute top-8 left-8 bg-black/60 backdrop-blur-md px-2 py-1 rounded border border-cyan-500/30 flex items-center gap-2">
-                    <ScanEye size={12} className="text-cyan-400" />
-                    <span className="text-[10px] font-mono text-cyan-300 animate-pulse">ANALYZING...</span>
-                  </div>
+               <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/20 via-transparent to-black/40">
+                  {/* Just a clean frame/vignette */}
                </div>
              )}
 
-             <div className={`absolute inset-0 bg-slate-950/60 transition-opacity duration-500 ${isVideoActive ? 'opacity-70' : 'opacity-0'}`}></div>
+             {/* Dark overlay for better orb contrast even when video is on */}
+             <div className={`absolute inset-0 bg-slate-950/60 transition-opacity duration-500 ${isVideoActive ? 'opacity-0' : 'opacity-100'}`}></div>
           </div>
 
           {/* AI ORB LAYER */}
-          <div className="relative z-10 flex flex-col items-center justify-center w-full h-full">
+          <div className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-all duration-700 ${isVideoActive ? 'justify-end pb-12 lg:pb-24' : ''}`}>
             
-            {/* Status Pills (Below Header) */}
-            <div className="absolute top-16 lg:top-8 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+            {/* Status Pills */}
+            <div className={`absolute left-1/2 -translate-x-1/2 z-20 flex gap-2 transition-all duration-700 ${isVideoActive ? 'top-4' : 'top-16 lg:top-8'}`}>
               {isConnected ? (
                   <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md border border-emerald-500/30 px-3 py-1 rounded-full shadow-lg">
                     <span className="relative flex h-2 w-2">
@@ -238,7 +235,7 @@ const App: React.FC = () => {
             </div>
 
             {/* The Magic Orb */}
-            <div className={`relative transition-all duration-700 ${isConnected ? 'scale-100' : 'scale-90 grayscale opacity-80'} mt-4`}>
+            <div className={`relative transition-all duration-700 ${isConnected ? 'scale-100' : 'scale-90 grayscale opacity-80'} ${isVideoActive ? 'scale-75 translate-y-4' : ''} mt-4`}>
                <div className={`absolute inset-0 rounded-full blur-[60px] transition-all duration-1000 ${isConnected ? 'bg-fuchsia-500/30 scale-150 animate-pulse-glow' : 'bg-transparent scale-100'}`}></div>
                {isConnected && (
                  <>
@@ -272,16 +269,6 @@ const App: React.FC = () => {
                  </div>
                )}
             </div>
-
-            {/* Welcome Text (Offline) */}
-            {!isConnected && (
-               <div className="mt-8 text-center px-6 animate-slide-up max-w-sm relative z-20">
-                   <h2 className="text-xl md:text-3xl font-extrabold text-white mb-2">Hi {profile.name}!</h2>
-                   <p className="text-xs md:text-base text-slate-300">
-                     I'm ready to help with <span className="text-fuchsia-400 font-bold">{profile.favoriteSubject}</span>.
-                   </p>
-               </div>
-            )}
           </div>
         </div>
 
@@ -293,176 +280,185 @@ const App: React.FC = () => {
                <div className="w-12 h-1.5 bg-white/10 rounded-full"></div>
            </div>
 
-           {/* Confidence Header */}
-           <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3">
-               <div className="flex-1">
-                   <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                           <BrainCircuit size={12} /> Lumi's Confidence
-                       </span>
-                       <span className="text-[10px] text-white font-bold">{learningStats.understandingScore}%</span>
-                   </div>
-                   <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                       <div 
-                          className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
-                          style={{ width: `${learningStats.understandingScore}%` }}
-                       ></div>
-                   </div>
-               </div>
-           </div>
+           {/* START SCREEN (When Offline) */}
+           {!isConnected ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+                    <div className="max-w-md space-y-8">
+                        <div>
+                            <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
+                                Hi, {profile.name}! 👋
+                            </h2>
+                            <p className="text-slate-400 text-sm md:text-base">
+                                Ready to crush your <span className="text-fuchsia-400 font-bold">{profile.favoriteSubject}</span> homework?
+                            </p>
+                        </div>
 
-           {/* Chat List */}
-           <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 space-y-6 custom-scrollbar scroll-smooth" ref={scrollRef}>
-                {messages.length === 0 && !liveInput && !liveOutput ? (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30 mt-4">
-                    <Bot size={40} className="mb-3 text-fuchsia-300" />
-                    <p className="text-center text-sm text-slate-300 px-8">Tap "Start Learning" to begin your session.</p>
-                  </div>
-                ) : (
-                  <>
-                    {messages.map((msg) => {
-                      if (msg.role === 'system') {
-                        return (
-                          <div key={msg.id} className="flex justify-center animate-zoom-in my-2">
-                            <div className="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 text-slate-400 px-3 py-1 rounded-full text-[10px] font-medium flex items-center gap-1.5 uppercase tracking-wide">
-                               <AlertCircle size={10} />
-                               {msg.text}
+                        {/* Primary Call To Action - Centered & Visible */}
+                        <button 
+                            onClick={connect}
+                            className="w-full flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-105 active:scale-95 transition-all group animate-pulse-glow"
+                        >
+                            <Sparkles className="w-5 h-5 text-fuchsia-600 group-hover:rotate-12 transition-transform" />
+                            <span>Start Learning</span>
+                        </button>
+                        
+                        <div className="flex items-center justify-center gap-6 text-xs text-slate-500">
+                            <span className="flex items-center gap-1"><Video size={12}/> Video Supported</span>
+                            <span className="flex items-center gap-1"><Mic size={12}/> Voice Interactive</span>
+                        </div>
+                    </div>
+                </div>
+           ) : (
+                /* CHAT INTERFACE (When Connected) */
+               <>
+                    {/* Confidence Header */}
+                    <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 animate-fade-in">
+                        <div className="flex-1">
+                            <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                                    <BrainCircuit size={12} /> Lumi's Confidence
+                                </span>
+                                <span className="text-[10px] text-white font-bold">{learningStats.understandingScore}%</span>
                             </div>
-                          </div>
-                        );
-                      }
+                            <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
+                                    style={{ width: `${learningStats.understandingScore}%` }}
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
 
-                      return (
-                        <div key={msg.id} className={`group flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end animate-slide-up`}>
-                          <div className={`
-                            w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg border 
-                            ${msg.role === 'user' 
-                              ? 'bg-gradient-to-br from-cyan-500 to-blue-600 border-white/20' 
-                              : 'bg-gradient-to-br from-fuchsia-600 to-violet-600 border-white/20'
-                            }
-                          `}>
-                            {msg.role === 'user' ? <User size={14} className="text-white"/> : <Ghost size={14} className="text-white"/>}
-                          </div>
-
-                          <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className={`
-                              relative px-4 py-3 rounded-2xl text-[15px] leading-relaxed shadow-md border z-10
-                              ${msg.role === 'user' 
-                                ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-sm border-blue-400/20' 
-                                : 'bg-slate-800/80 text-slate-200 rounded-bl-sm border-white/10'
-                              }
-                            `}>
-                              <p className="whitespace-pre-wrap">{msg.text}</p>
-                              {msg.image && (
-                                <div className="mt-3 rounded-lg overflow-hidden border border-white/10 shadow-lg">
-                                    <img src={msg.image} alt="Generated content" className="w-full h-auto object-cover" />
+                    {/* Chat List */}
+                    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 space-y-6 custom-scrollbar scroll-smooth" ref={scrollRef}>
+                            {messages.map((msg) => {
+                            if (msg.role === 'system') {
+                                return (
+                                <div key={msg.id} className="flex justify-center animate-zoom-in my-2">
+                                    <div className="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 text-slate-400 px-3 py-1 rounded-full text-[10px] font-medium flex items-center gap-1.5 uppercase tracking-wide">
+                                    <AlertCircle size={10} />
+                                    {msg.text}
+                                    </div>
                                 </div>
-                              )}
+                                );
+                            }
+
+                            return (
+                                <div key={msg.id} className={`group flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end animate-slide-up`}>
+                                <div className={`
+                                    w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg border 
+                                    ${msg.role === 'user' 
+                                    ? 'bg-gradient-to-br from-cyan-500 to-blue-600 border-white/20' 
+                                    : 'bg-gradient-to-br from-fuchsia-600 to-violet-600 border-white/20'
+                                    }
+                                `}>
+                                    {msg.role === 'user' ? <User size={14} className="text-white"/> : <Ghost size={14} className="text-white"/>}
+                                </div>
+
+                                <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    <div className={`
+                                    relative px-4 py-3 rounded-2xl text-[15px] leading-relaxed shadow-md border z-10
+                                    ${msg.role === 'user' 
+                                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-sm border-blue-400/20' 
+                                        : 'bg-slate-800/80 text-slate-200 rounded-bl-sm border-white/10'
+                                    }
+                                    `}>
+                                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                                    {msg.image && (
+                                        <div className="mt-3 rounded-lg overflow-hidden border border-white/10 shadow-lg">
+                                            <img src={msg.image} alt="Generated content" className="w-full h-auto object-cover" />
+                                        </div>
+                                    )}
+                                    </div>
+                                    
+                                    {/* Action Toolbar */}
+                                    <div className={`
+                                        flex items-center gap-2 mt-1 px-2 py-1 rounded-full
+                                        opacity-100 md:opacity-0 md:group-hover:opacity-100 
+                                        transition-opacity duration-200 
+                                    `}>
+                                    <button onClick={() => handleCopy(msg.text, msg.id)} className="text-slate-500 hover:text-white transition-colors p-1">
+                                        {copiedId === msg.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                    </button>
+                                    <button onClick={() => toggleMessageProperty(msg.id, 'isFavorite')} className={`p-1 ${msg.isFavorite ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}`}>
+                                        <Heart size={12} fill={msg.isFavorite ? "currentColor" : "none"} />
+                                    </button>
+                                    <span className="text-[9px] font-medium text-slate-600 ml-1">
+                                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    </div>
+                                </div>
+                                </div>
+                            );
+                            })}
+
+                            {/* Live Typing */}
+                            {(liveInput || liveOutput) && (
+                            <div className={`group flex gap-3 ${liveInput ? 'flex-row-reverse' : 'flex-row'} items-end animate-pulse`}>
+                                <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center ${liveInput ? 'bg-blue-600' : 'bg-fuchsia-600'}`}>
+                                {liveInput ? <User size={14} className="text-white"/> : <Sparkles size={14} className="text-white"/>}
+                                </div>
+                                <div className="relative px-4 py-3 rounded-2xl text-[15px] shadow-md border border-white/10 bg-slate-800/60 text-slate-300">
+                                <p>{liveInput || liveOutput}<span className="inline-block w-1.5 h-3.5 ml-1 bg-white/50 animate-pulse rounded-full align-middle"></span></p>
+                                </div>
+                            </div>
+                            )}
+                    </div>
+
+                    {/* === CONTROL DOCK (Pinned to Bottom of Sheet) === */}
+                    <div className="absolute bottom-0 left-0 w-full z-50">
+                        {/* Gradient Fade for Content */}
+                        <div className="h-12 w-full bg-gradient-to-t from-slate-950 to-transparent pointer-events-none absolute bottom-full left-0"></div>
+                        
+                        <div className="bg-slate-950/80 backdrop-blur-xl border-t border-white/10 p-4 pb-6 flex flex-col items-center gap-4 animate-slide-up">
+                            
+                            {/* Teacher Input */}
+                            {isTeacherMode && (
+                            <form onSubmit={handleTeacherSend} className="w-full max-w-lg flex gap-2">
+                                <input
+                                    type="text"
+                                    value={teacherInput}
+                                    onChange={(e) => setTeacherInput(e.target.value)}
+                                    placeholder="Type response..."
+                                    className="flex-1 bg-slate-800 border border-slate-700 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                />
+                                <button type="submit" className="p-2 bg-amber-600 text-white rounded-full hover:bg-amber-500"><Send size={16} /></button>
+                            </form>
+                            )}
+
+                            {/* Call Controls */}
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setIsMuted(!isMuted)} className={`p-4 rounded-full transition-all ${isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
+                                {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+                                </button>
+                                
+                                <button onClick={() => setIsVideoActive(!isVideoActive)} className={`p-4 rounded-full transition-all ${isVideoActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
+                                {isVideoActive ? <Video size={24} /> : <VideoOff size={24} />}
+                                </button>
+
+                                {isVideoActive && (
+                                <button onClick={toggleCamera} className="p-4 rounded-full bg-slate-800 text-slate-300 border border-slate-700 hover:text-white">
+                                    <RefreshCw size={24} className={cameraFacingMode === 'environment' ? 'rotate-180' : ''} />
+                                </button>
+                                )}
+
+                                <div className="w-px h-8 bg-white/10 mx-2"></div>
+
+                                <button onClick={disconnect} className="p-4 rounded-full bg-red-500 text-white shadow-lg shadow-red-900/20 hover:bg-red-600 active:scale-95 transition-all">
+                                <PhoneOff size={24} />
+                                </button>
                             </div>
                             
-                            {/* Action Toolbar */}
-                            <div className={`
-                                flex items-center gap-2 mt-1 px-2 py-1 rounded-full
-                                opacity-100 md:opacity-0 md:group-hover:opacity-100 
-                                transition-opacity duration-200 
-                            `}>
-                               <button onClick={() => handleCopy(msg.text, msg.id)} className="text-slate-500 hover:text-white transition-colors p-1">
-                                 {copiedId === msg.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                               </button>
-                               <button onClick={() => toggleMessageProperty(msg.id, 'isFavorite')} className={`p-1 ${msg.isFavorite ? 'text-pink-500' : 'text-slate-500 hover:text-pink-400'}`}>
-                                 <Heart size={12} fill={msg.isFavorite ? "currentColor" : "none"} />
-                               </button>
-                               <span className="text-[9px] font-medium text-slate-600 ml-1">
-                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                               </span>
+                            {/* Secondary Toggles (Small) */}
+                            <div className="flex gap-4">
+                                <button onClick={() => setIsTeacherMode(!isTeacherMode)} className={`text-xs font-medium flex items-center gap-1 ${isTeacherMode ? 'text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                                <Keyboard size={12} /> {isTeacherMode ? 'TEACHER ON' : 'Teacher Mode'}
+                                </button>
                             </div>
-                          </div>
                         </div>
-                      );
-                    })}
-
-                    {/* Live Typing */}
-                    {(liveInput || liveOutput) && (
-                      <div className={`group flex gap-3 ${liveInput ? 'flex-row-reverse' : 'flex-row'} items-end animate-pulse`}>
-                        <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center ${liveInput ? 'bg-blue-600' : 'bg-fuchsia-600'}`}>
-                           {liveInput ? <User size={14} className="text-white"/> : <Sparkles size={14} className="text-white"/>}
-                        </div>
-                        <div className="relative px-4 py-3 rounded-2xl text-[15px] shadow-md border border-white/10 bg-slate-800/60 text-slate-300">
-                           <p>{liveInput || liveOutput}<span className="inline-block w-1.5 h-3.5 ml-1 bg-white/50 animate-pulse rounded-full align-middle"></span></p>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-           </div>
-
-           {/* === CONTROL DOCK (Pinned to Bottom of Sheet) === */}
-           <div className="absolute bottom-0 left-0 w-full z-50">
-             
-             {/* Gradient Fade for Content */}
-             <div className="h-12 w-full bg-gradient-to-t from-slate-950 to-transparent pointer-events-none absolute bottom-full left-0"></div>
-             
-             <div className="bg-slate-950/80 backdrop-blur-xl border-t border-white/10 p-4 pb-6 flex flex-col items-center gap-4">
-               
-               {/* Teacher Input */}
-               {isTeacherMode && isConnected && (
-                 <form onSubmit={handleTeacherSend} className="w-full max-w-lg flex gap-2 animate-slide-up">
-                    <input
-                      type="text"
-                      value={teacherInput}
-                      onChange={(e) => setTeacherInput(e.target.value)}
-                      placeholder="Type response..."
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-                    />
-                    <button type="submit" className="p-2 bg-amber-600 text-white rounded-full hover:bg-amber-500"><Send size={16} /></button>
-                 </form>
-               )}
-
-               {/* Buttons */}
-               <div className="flex items-center gap-4">
-                 {!isConnected ? (
-                    <button 
-                      onClick={connect}
-                      className="flex items-center gap-2 bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-fuchsia-900/40 hover:scale-105 active:scale-95 transition-all"
-                    >
-                      <Sparkles className="w-5 h-5 animate-pulse" />
-                      <span>Start Learning</span>
-                    </button>
-                 ) : (
-                    <>
-                      <button onClick={() => setIsMuted(!isMuted)} className={`p-4 rounded-full transition-all ${isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
-                        {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-                      </button>
-                      
-                      <button onClick={() => setIsVideoActive(!isVideoActive)} className={`p-4 rounded-full transition-all ${isVideoActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
-                        {isVideoActive ? <Video size={24} /> : <VideoOff size={24} />}
-                      </button>
-
-                      {isVideoActive && (
-                        <button onClick={toggleCamera} className="p-4 rounded-full bg-slate-800 text-slate-300 border border-slate-700 hover:text-white">
-                          <RefreshCw size={24} className={cameraFacingMode === 'environment' ? 'rotate-180' : ''} />
-                        </button>
-                      )}
-
-                      <div className="w-px h-8 bg-white/10 mx-2"></div>
-
-                      <button onClick={disconnect} className="p-4 rounded-full bg-red-500 text-white shadow-lg shadow-red-900/20 hover:bg-red-600 active:scale-95 transition-all">
-                        <PhoneOff size={24} />
-                      </button>
-                    </>
-                 )}
-               </div>
-               
-               {/* Secondary Toggles (Small) */}
-               {isConnected && (
-                 <div className="flex gap-4">
-                    <button onClick={() => setIsTeacherMode(!isTeacherMode)} className={`text-xs font-medium flex items-center gap-1 ${isTeacherMode ? 'text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                       <Keyboard size={12} /> {isTeacherMode ? 'TEACHER ON' : 'Teacher Mode'}
-                    </button>
-                 </div>
-               )}
-             </div>
-           </div>
+                    </div>
+               </>
+           )}
 
         </div>
       </main>
