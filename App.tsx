@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut } from 'lucide-react';
 import SetupModal from './components/SetupModal';
@@ -58,7 +59,8 @@ const App: React.FC = () => {
     liveOutput,
     learningStats,
     sendTextMessage,
-    toggleMessageProperty
+    toggleMessageProperty,
+    isAiSpeaking
   } = useGeminiLive({ profile, videoRef, imageResolution });
 
   // Handle Camera Stream locally for the video element
@@ -237,7 +239,12 @@ const App: React.FC = () => {
 
             {/* The Magic Orb */}
             <div className={`relative transition-all duration-700 ${isConnected ? 'scale-100' : 'scale-90 grayscale opacity-80'} ${isVideoActive ? 'scale-75 translate-y-4' : ''} mt-4`}>
-               <div className={`absolute inset-0 rounded-full blur-[60px] transition-all duration-1000 ${isConnected ? 'bg-fuchsia-500/30 scale-150 animate-pulse-glow' : 'bg-transparent scale-100'}`}></div>
+               {/* Speaking Indicator Glow */}
+               <div className={`absolute inset-0 rounded-full blur-[60px] transition-all duration-300 
+                  ${isConnected ? 'bg-fuchsia-500/30' : 'bg-transparent'}
+                  ${isAiSpeaking ? 'scale-175 opacity-100' : 'scale-125 opacity-40 animate-pulse-glow'}
+               `}></div>
+               
                {isConnected && (
                  <>
                    <div className="absolute -inset-4 border border-cyan-500/30 rounded-[40%] animate-spin-slow blur-[1px]"></div>
@@ -246,9 +253,10 @@ const App: React.FC = () => {
                )}
 
                <div className={`
-                 rounded-full bg-slate-950/80 backdrop-blur-sm border-[4px] border-slate-700/50 flex items-center justify-center relative overflow-hidden shadow-2xl z-20
+                 rounded-full bg-slate-950/80 backdrop-blur-sm border-[4px] flex items-center justify-center relative overflow-hidden shadow-2xl z-20 transition-all duration-300
                  w-40 h-40 md:w-56 md:h-56 lg:w-72 lg:h-72
                  ${isVideoActive ? 'border-fuchsia-500/40 shadow-fuchsia-900/20' : ''}
+                 ${isAiSpeaking ? 'border-fuchsia-400 shadow-[0_0_40px_rgba(232,121,249,0.5)]' : 'border-slate-700/50'}
                `}>
                   <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-violet-600 via-transparent to-transparent"></div>
                   <div className="w-3/4 h-20 z-30">
