@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut } from 'lucide-react';
 import SetupModal from './components/SetupModal';
@@ -210,7 +209,8 @@ const App: React.FC = () => {
           </div>
 
           {/* AI ORB LAYER */}
-          <div className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-all duration-700 ${isVideoActive ? 'justify-end pb-12 lg:pb-24' : ''}`}>
+          {/* Adjusted padding-bottom to ensure orb clears the bottom sheet on mobile */}
+          <div className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-all duration-700 ${isVideoActive ? 'justify-end pb-20 lg:pb-24' : ''}`}>
             
             {/* Status Pills */}
             <div className={`absolute left-1/2 -translate-x-1/2 z-20 flex gap-2 transition-all duration-700 ${isVideoActive ? 'top-4' : 'top-16 lg:top-8'}`}>
