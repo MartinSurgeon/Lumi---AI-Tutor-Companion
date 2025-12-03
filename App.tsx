@@ -1,13 +1,22 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
 const App: React.FC = () => {
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
+  // Initialize Profile from LocalStorage
+  const [profile, setProfile] = useState<StudentProfile | null>(() => {
+    try {
+        const saved = localStorage.getItem('lumi_student_profile');
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+        return null;
+    }
+  });
+
   const [imageResolution, setImageResolution] = useState<ImageResolution>('1K');
   const [isTeacherMode, setIsTeacherMode] = useState(false);
   const [teacherInput, setTeacherInput] = useState('');
@@ -16,6 +25,23 @@ const App: React.FC = () => {
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Save profile to LocalStorage whenever it changes
+  useEffect(() => {
+    if (profile) {
+        localStorage.setItem('lumi_student_profile', JSON.stringify(profile));
+    }
+  }, [profile]);
+
+  const handleLogout = () => {
+    if (confirm("Are you sure you want to log out? This will clear your chat history.")) {
+        localStorage.removeItem('lumi_student_profile');
+        localStorage.removeItem('lumi_chat_history');
+        localStorage.removeItem('lumi_learning_stats');
+        setProfile(null);
+        window.location.reload();
+    }
+  };
   
   const {
     status,
@@ -135,8 +161,17 @@ const App: React.FC = () => {
                 {learningStats.difficultyLevel} Mode
            </div>
            
-           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg border-2 border-cyan-300/50">
-             <span className="text-xs font-bold text-white">{profile.name.charAt(0)}</span>
+           <div className="flex items-center gap-2">
+               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg border-2 border-cyan-300/50">
+                <span className="text-xs font-bold text-white">{profile.name.charAt(0)}</span>
+               </div>
+               <button 
+                onClick={handleLogout}
+                className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                title="Log Out & Clear Data"
+               >
+                   <LogOut size={18} />
+               </button>
            </div>
         </div>
       </header>

@@ -55,16 +55,47 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   
-  // Transcription State
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Transcription State - Initialized from LocalStorage
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+        const saved = localStorage.getItem('lumi_chat_history');
+        if (saved) {
+            return JSON.parse(saved).map((msg: any) => ({
+                ...msg,
+                timestamp: new Date(msg.timestamp) // Revive Date objects
+            }));
+        }
+    } catch (e) {
+        console.warn("Failed to load chat history", e);
+    }
+    return [];
+  });
+
   const [liveInput, setLiveInput] = useState('');
   const [liveOutput, setLiveOutput] = useState('');
   
-  // Learning Stats State
-  const [learningStats, setLearningStats] = useState<LearningStats>({
-    understandingScore: 50,
-    difficultyLevel: 'Beginner',
+  // Learning Stats State - Initialized from LocalStorage
+  const [learningStats, setLearningStats] = useState<LearningStats>(() => {
+    try {
+        const saved = localStorage.getItem('lumi_learning_stats');
+        return saved ? JSON.parse(saved) : { understandingScore: 50, difficultyLevel: 'Beginner' };
+    } catch (e) {
+        return { understandingScore: 50, difficultyLevel: 'Beginner' };
+    }
   });
+
+  // Persistence Effects
+  useEffect(() => {
+    try {
+        localStorage.setItem('lumi_chat_history', JSON.stringify(messages));
+    } catch (e) {
+        console.warn("Failed to save chat history (quota exceeded?)", e);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('lumi_learning_stats', JSON.stringify(learningStats));
+  }, [learningStats]);
 
   // Audio Context - Unified for Mobile Compatibility
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -81,9 +112,10 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const MAX_RETRIES = 3;
   const isLiveRef = useRef(false); // Guard to prevent sending data before handshake
 
-  // Playback Queue
+  // Playback Queue & Scheduling
   const nextStartTimeRef = useRef<number>(0);
   const audioSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const audioQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Video Frame Interval
   const videoIntervalRef = useRef<number | null>(null);
@@ -145,6 +177,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
       try { source.stop(); } catch (e) { /* ignore */ }
     });
     audioSourcesRef.current.clear();
+    nextStartTimeRef.current = 0;
+    audioQueueRef.current = Promise.resolve(); // Reset queue
 
     // Close AudioContext
     if (audioContextRef.current?.state !== 'closed') {
@@ -437,74 +471,87 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     const hasModelText = !!message.serverContent?.outputTranscription;
 
                     if ((hasModelAudio || hasModelText) && currentInputRef.current.trim()) {
-                        setMessages(prev => [...prev, {
+                        const newMsg: Message = {
                             id: Date.now().toString(),
                             role: 'user',
                             text: currentInputRef.current.trim(),
                             timestamp: new Date()
-                        }]);
+                        };
+                        setMessages(prev => [...prev, newMsg]);
                         currentInputRef.current = '';
                         setLiveInput('');
                     }
 
-                    // 1. Audio Output with Fade Envelope
+                    // 1. Audio Output with Fade Envelope & Scheduling Queue
                     const parts = message.serverContent?.modelTurn?.parts || [];
                     for (const part of parts) {
                         if (part.inlineData?.data && audioContextRef.current && outputGainNodeRef.current) {
                             const base64Audio = part.inlineData.data;
-                            const ctx = audioContextRef.current;
-                            nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
                             
-                            try {
-                                const audioBuffer = await decodeAudioData(
-                                    base64ToUint8Array(base64Audio),
-                                    ctx,
-                                    24000, 
-                                    1
-                                );
-
-                                // Create a dedicated gain node for this chunk's envelope
-                                const segmentGain = ctx.createGain();
-                                segmentGain.gain.value = 1;
-
-                                const source = ctx.createBufferSource();
-                                source.buffer = audioBuffer;
+                            // Queue audio decoding and scheduling to prevent race conditions
+                            audioQueueRef.current = audioQueueRef.current.then(async () => {
+                                if (!audioContextRef.current || !outputGainNodeRef.current) return;
+                                const ctx = audioContextRef.current;
                                 
-                                // Connect: Source -> SegmentGain -> MainGain -> Destination
-                                source.connect(segmentGain);
-                                segmentGain.connect(outputGainNodeRef.current);
-
-                                const startTime = nextStartTimeRef.current;
-                                const endTime = startTime + audioBuffer.duration;
-                                const fadeDuration = 0.05; // 50ms fade-out
-
-                                // Anti-click Fade-in (10ms)
-                                segmentGain.gain.setValueAtTime(0, startTime);
-                                segmentGain.gain.linearRampToValueAtTime(1, startTime + 0.01);
-                                
-                                // Smooth Fade-out (50ms)
-                                if (audioBuffer.duration > fadeDuration) {
-                                  segmentGain.gain.setValueAtTime(1, endTime - fadeDuration);
-                                  segmentGain.gain.linearRampToValueAtTime(0, endTime);
+                                // Buffer lag protection: Ensure start time is never in the past
+                                const bufferingDelay = 0.05; // 50ms buffer
+                                if (nextStartTimeRef.current < ctx.currentTime) {
+                                    nextStartTimeRef.current = ctx.currentTime + bufferingDelay;
                                 }
 
-                                source.addEventListener('ended', () => {
-                                    audioSourcesRef.current.delete(source);
-                                    // Disconnect nodes to free memory
-                                    setTimeout(() => {
-                                      try {
-                                        source.disconnect();
-                                        segmentGain.disconnect();
-                                      } catch(e) {}
-                                    }, 100);
-                                });
-                                
-                                source.start(startTime);
-                                nextStartTimeRef.current += audioBuffer.duration;
-                                audioSourcesRef.current.add(source);
-                            } catch (e) {
-                                console.error("Error decoding audio", e);
-                            }
+                                try {
+                                    const audioBuffer = await decodeAudioData(
+                                        base64ToUint8Array(base64Audio),
+                                        ctx,
+                                        24000, 
+                                        1
+                                    );
+
+                                    // Create a dedicated gain node for this chunk's envelope
+                                    const segmentGain = ctx.createGain();
+                                    segmentGain.gain.value = 1;
+
+                                    const source = ctx.createBufferSource();
+                                    source.buffer = audioBuffer;
+                                    
+                                    // Connect: Source -> SegmentGain -> MainGain -> Destination
+                                    source.connect(segmentGain);
+                                    segmentGain.connect(outputGainNodeRef.current);
+
+                                    const startTime = nextStartTimeRef.current;
+                                    const endTime = startTime + audioBuffer.duration;
+                                    
+                                    // Micro-fades (5ms) to prevent clicks at boundaries without volume dipping
+                                    const fadeDuration = 0.005; 
+
+                                    // Fade-in
+                                    segmentGain.gain.setValueAtTime(0, startTime);
+                                    segmentGain.gain.linearRampToValueAtTime(1, startTime + fadeDuration);
+                                    
+                                    // Fade-out (only if buffer is long enough, otherwise just quick ramp)
+                                    if (audioBuffer.duration > fadeDuration) {
+                                      segmentGain.gain.setValueAtTime(1, endTime - fadeDuration);
+                                      segmentGain.gain.linearRampToValueAtTime(0, endTime);
+                                    }
+
+                                    source.addEventListener('ended', () => {
+                                        audioSourcesRef.current.delete(source);
+                                        // Disconnect nodes to free memory
+                                        setTimeout(() => {
+                                          try {
+                                            source.disconnect();
+                                            segmentGain.disconnect();
+                                          } catch(e) {}
+                                        }, 100);
+                                    });
+                                    
+                                    source.start(startTime);
+                                    nextStartTimeRef.current += audioBuffer.duration;
+                                    audioSourcesRef.current.add(source);
+                                } catch (e) {
+                                    console.error("Error decoding audio", e);
+                                }
+                            });
                         }
                     }
 
@@ -633,22 +680,24 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         // Handle turn completion
                         if (serverContent.turnComplete) {
                             if (currentInputRef.current.trim()) {
-                                setMessages(prev => [...prev, {
-                                    id: Date.now().toString(),
+                                const newMsg: Message = {
+                                    id: Date.now().toString() + Math.random().toString().slice(2,5),
                                     role: 'user',
                                     text: currentInputRef.current.trim(),
                                     timestamp: new Date()
-                                }]);
+                                };
+                                setMessages(prev => [...prev, newMsg]);
                                 currentInputRef.current = '';
                                 setLiveInput('');
                             }
                             if (currentOutputRef.current.trim()) {
-                                setMessages(prev => [...prev, {
-                                    id: (Date.now() + 1).toString(),
+                                const newMsg: Message = {
+                                    id: Date.now().toString() + Math.random().toString().slice(2,5),
                                     role: 'assistant',
                                     text: currentOutputRef.current.trim(),
                                     timestamp: new Date()
-                                }]);
+                                };
+                                setMessages(prev => [...prev, newMsg]);
                                 currentOutputRef.current = '';
                                 setLiveOutput('');
                             }
@@ -660,6 +709,8 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         audioSourcesRef.current.forEach(src => src.stop());
                         audioSourcesRef.current.clear();
                         nextStartTimeRef.current = 0;
+                        audioQueueRef.current = Promise.resolve(); // Reset queue on interrupt
+                        
                         if (currentOutputRef.current.trim()) {
                             setMessages(prev => [...prev, {
                                 id: Date.now().toString(),
@@ -711,7 +762,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                     outputAudioTranscription: {},
                     tools: [{ functionDeclarations: [generateImageTool, updateProgressTool] }],
                     speechConfig: {
-                        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
                     },
                     systemInstruction: {
                         parts: [{ text: systemInstructionText }]
