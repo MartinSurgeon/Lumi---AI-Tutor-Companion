@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from '@google/genai';
 import { StudentProfile, ConnectionStatus, Message, ImageResolution, LearningStats } from '../types';
@@ -75,14 +76,22 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   const [liveInput, setLiveInput] = useState('');
   const [liveOutput, setLiveOutput] = useState('');
   
-  // Learning Stats State - Initialized from LocalStorage
+  // Learning Stats State - Initialized from LocalStorage with fallback safety
   const [learningStats, setLearningStats] = useState<LearningStats>(() => {
+    const defaultStats: LearningStats = { understandingScore: 50, difficultyLevel: 'Beginner' };
     try {
         const saved = localStorage.getItem('lumi_learning_stats');
-        return saved ? JSON.parse(saved) : { understandingScore: 50, difficultyLevel: 'Beginner' };
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Verify structure to avoid null/undefined issues
+            if (parsed && typeof parsed === 'object' && 'difficultyLevel' in parsed) {
+                return parsed;
+            }
+        }
     } catch (e) {
-        return { understandingScore: 50, difficultyLevel: 'Beginner' };
+        // ignore errors
     }
+    return defaultStats;
   });
 
   // Persistence Effects
@@ -95,7 +104,9 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
   }, [messages]);
 
   useEffect(() => {
-    localStorage.setItem('lumi_learning_stats', JSON.stringify(learningStats));
+    if (learningStats) {
+        localStorage.setItem('lumi_learning_stats', JSON.stringify(learningStats));
+    }
   }, [learningStats]);
 
   // Audio Context - Unified for Mobile Compatibility
@@ -267,67 +278,106 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     ));
   }, []);
 
-  const sendTextMessage = useCallback((text: string) => {
+  const sendTextMessage = useCallback((text: string, mode: 'chat' | 'instruction' = 'chat') => {
     if (!text.trim()) return;
 
-    // Immediately add to local messages
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      role: 'user',
-      text: text,
-      timestamp: new Date()
-    }]);
+    // Prepare payload
+    let textPayload = text;
+    
+    // If it's an instruction, prepend the director tag
+    if (mode === 'instruction') {
+        textPayload = `[DIRECTOR]: ${text}`;
+        
+        // Add to chat history as a system message (invisible to "student", visible to "teacher")
+        setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'system',
+            text: `(Director) ${text}`,
+            timestamp: new Date()
+        }]);
+    } else {
+        // Normal chat simulation
+        setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'user',
+            text: text,
+            timestamp: new Date()
+        }]);
+    }
 
     sessionPromiseRef.current?.then(session => {
-       // Attempt to send text via standard `send` if available (casting to any to avoid strict interface blocks)
+       // Attempt to send text via standard `send` if available
        if (typeof (session as any).send === 'function') {
          (session as any).send({
             client_content: {
-                turns: [{ role: 'user', parts: [{ text }] }],
+                turns: [{ role: 'user', parts: [{ text: textPayload }] }],
                 turn_complete: true
             }
          });
        } 
-       // Fallback: Try passing content via sendRealtimeInput (supported by some backend versions)
+       // Fallback
        else if (typeof session.sendRealtimeInput === 'function') {
          (session as any).sendRealtimeInput({
             content: {
                 role: 'user',
-                parts: [{ text }]
+                parts: [{ text: textPayload }]
             }
          });
        } else {
-         console.warn("Could not find a method to send text on the current session object.");
+         console.warn("Could not find a method to send text.");
        }
     }).catch(err => {
       console.error("Failed to send text message:", err);
     });
   }, []);
 
+  const sendUploadedImage = useCallback((base64Data: string, mimeType: string) => {
+    if (!base64Data) return;
+
+    // Add to chat history as a user upload
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: 'user',
+      text: '📄 Uploaded an image assignment',
+      image: `data:${mimeType};base64,${base64Data}`,
+      timestamp: new Date()
+    }]);
+
+    // Send to Gemini Live session
+    sessionPromiseRef.current?.then(session => {
+        session.sendRealtimeInput({
+            media: {
+                mimeType: mimeType,
+                data: base64Data
+            }
+        });
+    }).catch(err => {
+        console.error("Failed to upload image:", err);
+    });
+  }, []);
+
   const connect = useCallback(async () => {
     if (!profile) return;
     
-    // Per guidelines, use process.env.API_KEY
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      alert("API Key is missing! Please check your Environment Variables (API_KEY).");
+    const hasEnvKey = !!process.env.API_KEY;
+    const hasAiStudio = !!(window as any).aistudio;
+
+    if (!hasEnvKey && !hasAiStudio) {
+      alert("API Key is missing! Check API_KEY in your .env file.");
       setStatus(ConnectionStatus.ERROR);
       return;
     }
 
-    // Reset retries if manually connecting
     if (status === ConnectionStatus.DISCONNECTED || status === ConnectionStatus.ERROR) {
        reconnectAttemptsRef.current = 0;
     }
     isLiveRef.current = false;
 
-    // Unified Audio Context for Mobile Compatibility
     if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
         audioContextRef.current = new AudioContextClass({ latencyHint: 'interactive' });
     }
 
-    // Resume immediately to unlock audio on some browsers (User Gesture)
     try {
         if (audioContextRef.current.state === 'suspended') {
             await audioContextRef.current.resume();
@@ -340,7 +390,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
         try {
             setStatus(ConnectionStatus.CONNECTING);
             
-            // 1. Enforce API Key Selection (Only for Pro users using AI Studio wrapper)
             const win = window as any;
             if (win.aistudio) {
                 const hasKey = await win.aistudio.hasSelectedApiKey();
@@ -349,29 +398,25 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 }
             }
 
-            // 2. Initialize AI with retrieved key
-            aiRef.current = new GoogleGenAI({ apiKey: apiKey });
+            aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
             const ctx = audioContextRef.current!;
 
-            // Setup Analyzers (Create fresh ones if missing)
             if (!inputAnalyzerRef.current) inputAnalyzerRef.current = ctx.createAnalyser();
             if (!outputAnalyzerRef.current) outputAnalyzerRef.current = ctx.createAnalyser();
             
-            // Setup Output Node (Fresh gain node)
             if (!outputGainNodeRef.current) {
                 outputGainNodeRef.current = ctx.createGain();
                 outputGainNodeRef.current.connect(outputAnalyzerRef.current!);
                 outputAnalyzerRef.current!.connect(ctx.destination);
             }
 
-            // Get Microphone Stream with Mobile-Friendly Constraints
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
-                    sampleRate: 16000, // Try to request 16k directly if possible
+                    sampleRate: 16000, 
                 } 
             });
             
@@ -383,10 +428,16 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 - You speak quickly, clearly, and with enthusiasm.
                 - You NEVER start by saying "Hello" or "Hi" yourself. Wait for the user to speak first.
                 
+                SUPERVISOR OVERRIDE:
+                - If you receive a message starting with "[DIRECTOR]:", this is a hidden instruction from a teacher/parent.
+                - Do NOT read the instruction out loud.
+                - IMMEDIATELY adjust your behavior or teaching style based on the instruction.
+                - Example: "[DIRECTOR]: Give him a hint" -> You say: "Here's a clue to help you get started..."
+                
                 VISION CAPABILITY:
                 - You can SEE. You receive video frames of the user and their environment.
+                - You can also receive UPLOADED IMAGES (assignments, worksheets).
                 - INTERACT VISUALLY: If the user shows you a book, worksheet, or object, describe it and use it in your teaching.
-                - Example: "I see you're holding a geometry worksheet. Let's look at problem 3 together!"
                 - If the camera is on but you don't see anything specific, just chat face-to-face.
 
                 STARTUP TASK:
@@ -394,21 +445,15 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 
                 ADAPTIVE LEARNING PROTOCOL:
                 1. TRACKING: Continuously assess ${profile.name}'s understanding (0-100%).
-                - Correct answer + explanation = +10-20% (Score goes up)
-                - Correct answer only = +5-10%
-                - Confusion/Wrong answer = -5-10% (Score goes down)
-                2. DIFFICULTY ADJUSTMENT:
-                - 0-40% Score: Beginner Mode (Simple words, many analogies, slow pace).
-                - 41-75% Score: Intermediate Mode (Standard academic terms, normal pace).
-                - 76-100% Score: Advanced Mode (Complex synthesis, challenge questions).
-                3. CHECKPOINTS: Every 3-4 turns, ask a specific "Check for Understanding" question to verify they are following.
+                2. DIFFICULTY ADJUSTMENT: Beginner (0-40%), Intermediate (41-75%), Advanced (76-100%).
+                3. CHECKPOINTS: Every 3-4 turns, ask a specific "Check for Understanding" question.
                 4. VISUALS: Use 'generate_educational_image' proactively for visual topics.
                 
                 CHAIN OF THOUGHT (CoT):
-                1. ANALYZE user input (audio and video).
-                2. CALCULATE new understanding score.
-                3. CALL 'update_student_progress' if the score or difficulty changes.
-                4. PLAN the explanation based on the current Difficulty Level.
+                1. ANALYZE user input.
+                2. CALCULATE understanding score.
+                3. CALL 'update_student_progress'.
+                4. PLAN explanation.
                 5. SPEAK.
                 
                 RULES:
@@ -422,14 +467,11 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 callbacks: {
                 onopen: async () => {
                     console.log("Session connected");
-                    reconnectAttemptsRef.current = 0; // Reset retries on success
+                    reconnectAttemptsRef.current = 0; 
                     setStatus(ConnectionStatus.CONNECTED);
                     
-                    // Send Initial Handshake - Greeting text
-                    // Added delay to ensure socket is ready, THEN enable audio streaming
                     setTimeout(() => {
                         sessionPromiseRef.current?.then(session => {
-                            // Try sending handshake text
                             if ((session as any).send) {
                                 (session as any).send({ 
                                     client_content: {
@@ -438,23 +480,20 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                     } 
                                 });
                             }
-                            // Enable Audio Streaming AFTER handshake
                             isLiveRef.current = true;
                         });
                     }, 500);
                     
-                    // Setup Microphone Logic
                     const currentCtx = audioContextRef.current;
                     if (!currentCtx) return;
                     
                     inputSourceRef.current = currentCtx.createMediaStreamSource(stream);
                     inputSourceRef.current.connect(inputAnalyzerRef.current!); 
                     
-                    // Use ScriptProcessor for input capture (compatible with iOS/older browsers)
                     processorRef.current = currentCtx.createScriptProcessor(4096, 1, 1);
                     
                     processorRef.current.onaudioprocess = (e) => {
-                        if (isMuted || !isLiveRef.current) return; // Block audio if not ready
+                        if (isMuted || !isLiveRef.current) return; 
                         
                         const inputData = e.inputBuffer.getChannelData(0);
                         const downsampledData = downsampleTo16000(inputData, currentCtx.sampleRate);
@@ -467,7 +506,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
                     inputSourceRef.current.connect(processorRef.current);
                     
-                    // Silence node to prevent feedback & keep processor alive on iOS
                     const silenceNode = currentCtx.createGain();
                     silenceNode.gain.value = 0;
                     processorRef.current.connect(silenceNode);
@@ -476,7 +514,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                 onmessage: async (message: LiveServerMessage) => {
                     const serverContent = message.serverContent;
                     
-                    // 0. EARLY COMMIT: Detect if model is starting to respond
                     const hasModelAudio = message.serverContent?.modelTurn?.parts?.some(p => p.inlineData);
                     const hasModelText = !!message.serverContent?.outputTranscription;
 
@@ -492,19 +529,16 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         setLiveInput('');
                     }
 
-                    // 1. Audio Output with Fade Envelope & Scheduling Queue
                     const parts = message.serverContent?.modelTurn?.parts || [];
                     for (const part of parts) {
                         if (part.inlineData?.data && audioContextRef.current && outputGainNodeRef.current) {
                             const base64Audio = part.inlineData.data;
                             
-                            // Queue audio decoding and scheduling to prevent race conditions
                             audioQueueRef.current = audioQueueRef.current.then(async () => {
                                 if (!audioContextRef.current || !outputGainNodeRef.current) return;
                                 const ctx = audioContextRef.current;
                                 
-                                // Buffer lag protection: Ensure start time is never in the past
-                                const bufferingDelay = 0.05; // 50ms buffer
+                                const bufferingDelay = 0.08; 
                                 if (nextStartTimeRef.current < ctx.currentTime) {
                                     nextStartTimeRef.current = ctx.currentTime + bufferingDelay;
                                 }
@@ -517,41 +551,27 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                         1
                                     );
 
-                                    // Create a dedicated gain node for this chunk's envelope
                                     const segmentGain = ctx.createGain();
                                     segmentGain.gain.value = 1;
 
                                     const source = ctx.createBufferSource();
                                     source.buffer = audioBuffer;
                                     
-                                    // Connect: Source -> SegmentGain -> MainGain -> Destination
                                     source.connect(segmentGain);
                                     segmentGain.connect(outputGainNodeRef.current);
 
                                     const startTime = nextStartTimeRef.current;
-                                    const endTime = startTime + audioBuffer.duration;
-                                    
-                                    // Micro-fades (5ms) to prevent clicks at boundaries without volume dipping
                                     const fadeDuration = 0.005; 
-
-                                    // Fade-in
+                                    
                                     segmentGain.gain.setValueAtTime(0, startTime);
                                     segmentGain.gain.linearRampToValueAtTime(1, startTime + fadeDuration);
                                     
-                                    // Fade-out (only if buffer is long enough, otherwise just quick ramp)
-                                    if (audioBuffer.duration > fadeDuration) {
-                                      segmentGain.gain.setValueAtTime(1, endTime - fadeDuration);
-                                      segmentGain.gain.linearRampToValueAtTime(0, endTime);
-                                    }
-
                                     source.addEventListener('ended', () => {
                                         audioSourcesRef.current.delete(source);
-                                        // Update speaking state
                                         if (audioSourcesRef.current.size === 0) {
                                           setIsAiSpeaking(false);
                                         }
                                         
-                                        // Disconnect nodes to free memory
                                         setTimeout(() => {
                                           try {
                                             source.disconnect();
@@ -563,7 +583,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                     source.start(startTime);
                                     nextStartTimeRef.current += audioBuffer.duration;
                                     audioSourcesRef.current.add(source);
-                                    setIsAiSpeaking(true); // Set speaking state true
+                                    setIsAiSpeaking(true); 
                                 } catch (e) {
                                     console.error("Error decoding audio", e);
                                 }
@@ -571,7 +591,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         }
                     }
 
-                    // 2. Tool Calls
                     if (message.toolCall) {
                         for (const fc of message.toolCall.functionCalls) {
                             if (fc.name === 'generate_educational_image') {
@@ -585,22 +604,21 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
                                 const generateImage = async () => {
                                     try {
-                                        // Reuse existing client if possible
                                         if (!aiRef.current) throw new Error("AI Client not initialized");
 
-                                        // Use gemini-2.5-flash-image
+                                        const enhancedPrompt = `Educational illustration, clear, high-contrast, simple background: ${prompt}`;
+
                                         const result = await aiRef.current.models.generateContent({
                                             model: 'gemini-2.5-flash-image', 
-                                            contents: { parts: [{ text: prompt }] },
+                                            contents: { parts: [{ text: enhancedPrompt }] },
                                             config: {
                                                 imageConfig: {
-                                                    aspectRatio: "16:9" // Landscape for educational diagrams
+                                                    aspectRatio: "16:9" 
                                                 }
                                             }
                                         });
 
                                         let base64Image = null;
-                                        // Iterate all candidates/parts to find image
                                         for (const candidate of result.candidates || []) {
                                             for (const part of candidate.content?.parts || []) {
                                                 if (part.inlineData) {
@@ -613,7 +631,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
                                         if (base64Image) {
                                             const imageUrl = `data:image/png;base64,${base64Image}`;
-                                            playFeedbackSound('success'); // Play magic sound
+                                            playFeedbackSound('success'); 
                                             setMessages(prev => [...prev, {
                                                 id: Date.now().toString(),
                                                 role: 'assistant',
@@ -634,14 +652,23 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                         } else {
                                             throw new Error("No image data returned from model");
                                         }
-                                    } catch (err) {
+                                    } catch (err: any) {
                                         console.error("Image gen failed", err);
+                                        let errorMsg = "Image generation failed.";
+                                        
+                                        if (err.message?.includes('429')) {
+                                            errorMsg = "⚠️ Image quota exceeded. Try again later.";
+                                        } else if (err.message?.includes('403')) {
+                                            errorMsg = "⚠️ Permission denied for Image Generation. Check API Key billing/permissions.";
+                                        }
+
                                         setMessages(prev => [...prev, {
                                             id: Date.now().toString(),
                                             role: 'system',
-                                            text: `❌ Image generation failed.`,
+                                            text: errorMsg,
                                             timestamp: new Date()
                                         }]);
+                                        
                                         sessionPromiseRef.current?.then(session => {
                                             session.sendToolResponse({
                                                 functionResponses: [{
@@ -667,7 +694,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                                     lastUpdateReason: reason
                                 });
                                 
-                                playFeedbackSound('notification'); // Play notification blip
+                                playFeedbackSound('notification'); 
 
                                 sessionPromiseRef.current?.then(session => {
                                     session.sendToolResponse({
@@ -682,7 +709,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         }
                     }
 
-                    // 3. Transcription Handling
                     if (serverContent) {
                         if (serverContent.inputTranscription?.text) {
                             currentInputRef.current += serverContent.inputTranscription.text;
@@ -693,7 +719,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                             setLiveOutput(currentOutputRef.current);
                         }
                         
-                        // Handle turn completion
                         if (serverContent.turnComplete) {
                             if (currentInputRef.current.trim()) {
                                 const newMsg: Message = {
@@ -720,13 +745,12 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         }
                     }
                     
-                    // 4. Interruption
                     if (message.serverContent?.interrupted) {
                         audioSourcesRef.current.forEach(src => src.stop());
                         audioSourcesRef.current.clear();
                         setIsAiSpeaking(false);
                         nextStartTimeRef.current = 0;
-                        audioQueueRef.current = Promise.resolve(); // Reset queue on interrupt
+                        audioQueueRef.current = Promise.resolve(); 
                         
                         if (currentOutputRef.current.trim()) {
                             setMessages(prev => [...prev, {
@@ -760,12 +784,10 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
                         }]);
                         setStatus(ConnectionStatus.ERROR);
                     } else {
-                        // Retry logic
                         if (reconnectAttemptsRef.current < MAX_RETRIES) {
                             reconnectAttemptsRef.current++;
                             console.log(`Connection error. Retrying ${reconnectAttemptsRef.current}/${MAX_RETRIES}...`);
                             setStatus(ConnectionStatus.CONNECTING);
-                            // Cleanup then retry
                             disconnect().then(() => {
                                 setTimeout(establishConnection, 2000);
                             });
@@ -811,7 +833,6 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
 
   }, [profile, isMuted, disconnect, playFeedbackSound]);
 
-  // Video Streaming Logic
   useEffect(() => {
     if (isVideoActive && status === ConnectionStatus.CONNECTED && videoRef.current && canvasRef.current && isLiveRef.current) {
       const ctx = canvasRef.current.getContext('2d');
@@ -834,7 +855,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
             });
           });
         }
-      }, 500); // 2 FPS (500ms) for better interactivity
+      }, 500); 
     } else {
       if (videoIntervalRef.current) {
         clearInterval(videoIntervalRef.current);
@@ -861,6 +882,7 @@ export const useGeminiLive = ({ profile, videoRef, imageResolution }: UseGeminiL
     liveOutput,
     learningStats,
     sendTextMessage,
+    sendUploadedImage,
     toggleMessageProperty,
     isAiSpeaking
   };

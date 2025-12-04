@@ -1,12 +1,40 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut, HelpCircle, Volume2, MessageSquare, Radio } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
 import { useGeminiLive } from './hooks/useGeminiLive';
 
+// Splash Screen Component
+const SplashScreen = ({ onComplete }: { onComplete: () => void }) => {
+    useEffect(() => {
+        const timer = setTimeout(onComplete, 3000);
+        return () => clearTimeout(timer);
+    }, [onComplete]);
+
+    return (
+        <div className="fixed inset-0 z-[60] bg-slate-950 flex flex-col items-center justify-center animate-fade-in">
+            <div className="relative mb-6">
+                <div className="absolute inset-0 bg-fuchsia-500/20 blur-[60px] rounded-full animate-pulse-glow"></div>
+                <div className="relative bg-gradient-to-br from-fuchsia-500 to-violet-600 p-6 rounded-[2rem] shadow-2xl shadow-fuchsia-500/30 animate-slide-up">
+                    <Ghost size={64} className="text-white" />
+                </div>
+            </div>
+            <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 to-cyan-300 tracking-tight animate-slide-up" style={{ animationDelay: '0.2s' }}>
+                Lumi
+            </h1>
+            <p className="text-slate-400 mt-2 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+                Your Magical AI Tutor
+            </p>
+        </div>
+    );
+};
+
 const App: React.FC = () => {
+  const [showSplash, setShowSplash] = useState(true);
+  
   // Initialize Profile from LocalStorage
   const [profile, setProfile] = useState<StudentProfile | null>(() => {
     try {
@@ -19,6 +47,7 @@ const App: React.FC = () => {
 
   const [imageResolution, setImageResolution] = useState<ImageResolution>('1K');
   const [isTeacherMode, setIsTeacherMode] = useState(false);
+  const [isDirectorMode, setIsDirectorMode] = useState(false);
   const [teacherInput, setTeacherInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
@@ -112,7 +141,7 @@ const App: React.FC = () => {
   const handleTeacherSend = (e: React.FormEvent) => {
     e.preventDefault();
     if (teacherInput.trim()) {
-      sendTextMessage(teacherInput);
+      sendTextMessage(teacherInput, isDirectorMode ? 'instruction' : 'chat');
       setTeacherInput('');
     }
   };
@@ -122,6 +151,10 @@ const App: React.FC = () => {
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  if (showSplash) {
+      return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
 
   if (!profile) {
     return <SetupModal onComplete={setProfile} />;
@@ -158,13 +191,13 @@ const App: React.FC = () => {
         
         {/* Profile / Stats Pill */}
         <div className="flex items-center gap-3 pointer-events-auto">
-           {isConnected && (
+           {isConnected && learningStats && (
                <div className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wide bg-slate-900/80 backdrop-blur-md ${
                     learningStats.difficultyLevel === 'Advanced' ? 'bg-red-900/30 border-red-500/50 text-red-300' :
                     learningStats.difficultyLevel === 'Intermediate' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
                     'bg-emerald-900/30 border-emerald-500/50 text-emerald-300'
                 }`}>
-                    {learningStats.difficultyLevel} Mode
+                    {learningStats.difficultyLevel || 'Beginner'} Mode
                </div>
            )}
            
@@ -331,22 +364,24 @@ const App: React.FC = () => {
                 /* CHAT INTERFACE (When Connected) */
                <>
                     {/* Confidence Header */}
-                    <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 animate-fade-in">
-                        <div className="flex-1">
-                            <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                                    <BrainCircuit size={12} /> Lumi's Confidence
-                                </span>
-                                <span className="text-[10px] text-white font-bold">{learningStats.understandingScore}%</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
-                                <div 
-                                    className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
-                                    style={{ width: `${learningStats.understandingScore}%` }}
-                                ></div>
+                    {learningStats && (
+                        <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 animate-fade-in">
+                            <div className="flex-1">
+                                <div className="flex justify-between items-center mb-1.5">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                                        <BrainCircuit size={12} /> Lumi's Confidence
+                                    </span>
+                                    <span className="text-[10px] text-white font-bold">{learningStats.understandingScore || 0}%</span>
+                                </div>
+                                <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+                                    <div 
+                                        className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
+                                        style={{ width: `${learningStats.understandingScore || 0}%` }}
+                                    ></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Chat List */}
                     <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 space-y-6 custom-scrollbar scroll-smooth" ref={scrollRef}>
@@ -414,71 +449,135 @@ const App: React.FC = () => {
                             {/* Live Typing */}
                             {(liveInput || liveOutput) && (
                             <div className={`group flex gap-3 ${liveInput ? 'flex-row-reverse' : 'flex-row'} items-end animate-pulse`}>
-                                <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center ${liveInput ? 'bg-blue-600' : 'bg-fuchsia-600'}`}>
-                                {liveInput ? <User size={14} className="text-white"/> : <Sparkles size={14} className="text-white"/>}
+                                <div className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center bg-slate-800/50`}>
+                                    <div className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce"></div>
                                 </div>
-                                <div className="relative px-4 py-3 rounded-2xl text-[15px] shadow-md border border-white/10 bg-slate-800/60 text-slate-300">
-                                <p>{liveInput || liveOutput}<span className="inline-block w-1.5 h-3.5 ml-1 bg-white/50 animate-pulse rounded-full align-middle"></span></p>
+                                <div className={`
+                                    px-4 py-3 rounded-2xl text-[15px] border z-10 opacity-70
+                                    ${liveInput
+                                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-sm border-blue-400/20' 
+                                        : 'bg-slate-800/80 text-slate-200 rounded-bl-sm border-white/10'
+                                    }
+                                `}>
+                                    <p>{liveInput || liveOutput}</p>
                                 </div>
                             </div>
                             )}
                     </div>
 
-                    {/* === CONTROL DOCK (Pinned to Bottom of Sheet) === */}
-                    <div className="absolute bottom-0 left-0 w-full z-50">
-                        {/* Gradient Fade for Content */}
-                        <div className="h-12 w-full bg-gradient-to-t from-slate-950 to-transparent pointer-events-none absolute bottom-full left-0"></div>
+                    {/* === CONTROL DOCK === */}
+                    <div className="absolute bottom-0 w-full p-4 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent">
                         
-                        <div className="bg-slate-950/80 backdrop-blur-xl border-t border-white/10 p-4 pb-6 flex flex-col items-center gap-4 animate-slide-up">
-                            
-                            {/* Teacher Input */}
-                            {isTeacherMode && (
-                            <form onSubmit={handleTeacherSend} className="w-full max-w-lg flex gap-2">
+                        {/* Teacher Mode Input */}
+                        {isTeacherMode && (
+                        <div className="mb-4 animate-slide-up">
+                            <div className="flex items-center justify-between mb-2 px-1">
+                                <div className="flex items-center gap-2">
+                                   <Keyboard size={12} className="text-amber-400" />
+                                   <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">
+                                       {isDirectorMode ? 'Director Mode (Override AI)' : 'Student Simulation'}
+                                   </span>
+                                </div>
+                                <button 
+                                  onClick={() => setIsDirectorMode(!isDirectorMode)}
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all flex items-center gap-1
+                                    ${isDirectorMode 
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50' 
+                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                                    }`}
+                                >
+                                    {isDirectorMode ? <Radio size={10} /> : <MessageSquare size={10} />}
+                                    {isDirectorMode ? 'Directing' : 'Chatting'}
+                                </button>
+                            </div>
+                            <form onSubmit={handleTeacherSend} className="relative group">
                                 <input
                                     type="text"
                                     value={teacherInput}
                                     onChange={(e) => setTeacherInput(e.target.value)}
-                                    placeholder="Type response..."
-                                    className="flex-1 bg-slate-800 border border-slate-700 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                    placeholder={isDirectorMode ? "Whisper an instruction to Lumi..." : "Type what the student would say..."}
+                                    className={`w-full bg-slate-900/80 border rounded-xl py-3 pl-4 pr-12 text-sm text-white focus:outline-none focus:ring-2 transition-all
+                                        ${isDirectorMode 
+                                            ? 'border-amber-500/30 focus:border-amber-500 focus:ring-amber-500/20 placeholder:text-amber-500/30' 
+                                            : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500/20 placeholder:text-slate-500'
+                                        }
+                                    `}
                                 />
-                                <button type="submit" className="p-2 bg-amber-600 text-white rounded-full hover:bg-amber-500"><Send size={16} /></button>
+                                <button 
+                                    type="submit" 
+                                    disabled={!teacherInput.trim()}
+                                    className={`absolute right-2 top-2 p-1.5 rounded-lg transition-colors
+                                        ${isDirectorMode
+                                            ? 'bg-amber-600 hover:bg-amber-500 text-white disabled:bg-slate-800 disabled:text-slate-600'
+                                            : 'bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-slate-800 disabled:text-slate-600'
+                                        }
+                                    `}
+                                >
+                                    <Send size={14} />
+                                </button>
                             </form>
-                            )}
-
-                            {/* Call Controls */}
-                            <div className="flex items-center gap-4">
-                                <button onClick={() => setIsMuted(!isMuted)} className={`p-4 rounded-full transition-all ${isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
-                                {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
-                                </button>
-                                
-                                <button onClick={() => setIsVideoActive(!isVideoActive)} className={`p-4 rounded-full transition-all ${isVideoActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-slate-800 text-white border border-slate-700 hover:bg-slate-700'}`}>
-                                {isVideoActive ? <Video size={24} /> : <VideoOff size={24} />}
-                                </button>
-
-                                {isVideoActive && (
-                                <button onClick={toggleCamera} className="p-4 rounded-full bg-slate-800 text-slate-300 border border-slate-700 hover:text-white">
-                                    <RefreshCw size={24} className={cameraFacingMode === 'environment' ? 'rotate-180' : ''} />
-                                </button>
-                                )}
-
-                                <div className="w-px h-8 bg-white/10 mx-2"></div>
-
-                                <button onClick={disconnect} className="p-4 rounded-full bg-red-500 text-white shadow-lg shadow-red-900/20 hover:bg-red-600 active:scale-95 transition-all">
-                                <PhoneOff size={24} />
-                                </button>
+                            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500 px-1">
+                                <Volume2 size={10} className={isMuted ? 'text-red-400' : 'text-slate-500'} />
+                                <span>Mic is auto-muted.</span>
                             </div>
+                        </div>
+                        )}
+
+                        {/* Main Controls */}
+                        <div className="flex items-center justify-between gap-4 bg-slate-900/50 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-xl">
                             
-                            {/* Secondary Toggles (Small) */}
-                            <div className="flex gap-4">
-                                <button onClick={() => setIsTeacherMode(!isTeacherMode)} className={`text-xs font-medium flex items-center gap-1 ${isTeacherMode ? 'text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}>
-                                <Keyboard size={12} /> {isTeacherMode ? 'TEACHER ON' : 'Teacher Mode'}
+                            {/* Left Group */}
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => setIsMuted(!isMuted)}
+                                    className={`p-3 rounded-xl transition-all ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-slate-800/50 text-white hover:bg-slate-700'}`}
+                                >
+                                    {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
                                 </button>
+                                <button 
+                                    onClick={() => setIsVideoActive(!isVideoActive)}
+                                    className={`p-3 rounded-xl transition-all ${!isVideoActive ? 'bg-slate-800/50 text-slate-400 hover:bg-slate-700' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'}`}
+                                >
+                                    {isVideoActive ? <Video size={20} /> : <VideoOff size={20} />}
+                                </button>
+                                {isVideoActive && (
+                                   <button 
+                                     onClick={toggleCamera}
+                                     className="p-3 rounded-xl bg-slate-800/50 text-slate-300 hover:bg-slate-700 transition-all"
+                                     title="Switch Camera"
+                                   >
+                                      <RefreshCw size={20} />
+                                   </button>
+                                )}
+                            </div>
+
+                            {/* Center - End Call */}
+                            <button 
+                                onClick={disconnect}
+                                className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-red-900/20 transition-all active:scale-95"
+                            >
+                                <PhoneOff size={20} />
+                                <span className="hidden sm:inline">End</span>
+                            </button>
+
+                            {/* Right Group - Teacher Mode Toggle */}
+                            <div className="flex items-center gap-2 relative group">
+                                <button 
+                                    onClick={() => setIsTeacherMode(!isTeacherMode)}
+                                    className={`p-3 rounded-xl transition-all border ${isTeacherMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800/50 text-slate-400 border-transparent hover:bg-slate-700'}`}
+                                    title="Teacher Simulation Mode"
+                                >
+                                    <Keyboard size={20} />
+                                </button>
+                                {/* Tooltip */}
+                                <div className="absolute bottom-full right-0 mb-3 w-48 bg-slate-800 text-xs text-slate-300 p-2 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-white/5">
+                                    Simulate student responses or direct the AI via text.
+                                </div>
                             </div>
                         </div>
                     </div>
                </>
            )}
-
         </div>
       </main>
     </div>
