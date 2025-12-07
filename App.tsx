@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut, HelpCircle, Volume2, MessageSquare, Radio, Download } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut, HelpCircle, Volume2, MessageSquare, Radio, Download, Activity, TrendingDown } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
@@ -173,6 +173,41 @@ const App: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const getConfidenceConfig = (score: number) => {
+      if (score >= 85) return { 
+          label: 'Mastery', 
+          color: 'text-fuchsia-400', 
+          gradient: 'from-fuchsia-500 to-purple-600',
+          bg: 'bg-fuchsia-500/10',
+          border: 'border-fuchsia-500/30',
+          icon: Award
+      };
+      if (score >= 60) return { 
+          label: 'On Track', 
+          color: 'text-cyan-400', 
+          gradient: 'from-cyan-400 to-blue-500',
+          bg: 'bg-cyan-500/10',
+          border: 'border-cyan-500/30',
+          icon: TrendingUp
+      };
+      if (score >= 40) return { 
+          label: 'Learning', 
+          color: 'text-amber-400', 
+          gradient: 'from-amber-400 to-orange-500',
+          bg: 'bg-amber-500/10',
+          border: 'border-amber-500/30',
+          icon: Activity
+      };
+      return { 
+          label: 'Needs Focus', 
+          color: 'text-slate-400', 
+          gradient: 'from-slate-500 to-slate-400',
+          bg: 'bg-slate-500/10',
+          border: 'border-slate-500/30',
+          icon: TrendingDown
+      };
+  };
+
   if (showSplash) {
       return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
@@ -183,6 +218,8 @@ const App: React.FC = () => {
 
   const isConnected = status === ConnectionStatus.CONNECTED;
   const isConnecting = status === ConnectionStatus.CONNECTING;
+  
+  const conf = learningStats ? getConfidenceConfig(learningStats.understandingScore) : null;
 
   return (
     <div className="h-[100dvh] bg-slate-950 text-slate-100 font-sans overflow-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
@@ -407,28 +444,51 @@ const App: React.FC = () => {
            ) : (
                 /* CHAT INTERFACE (When Connected) */
                <>
-                    {/* Confidence Header */}
-                    {learningStats && (
-                        <div className="px-6 py-4 border-b border-white/5 flex items-center gap-3 animate-fade-in">
-                            <div className="flex-1">
-                                <div className="flex justify-between items-center mb-1.5">
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                                        <BrainCircuit size={12} /> Lumi's Confidence
-                                    </span>
-                                    <span className="text-[10px] text-white font-bold">{learningStats?.understandingScore || 0}%</span>
+                    {/* CONFIDENCE HUD (Redesigned) */}
+                    {learningStats && conf && (
+                        <div className="px-5 py-4 animate-fade-in relative z-20">
+                            <div className={`
+                                relative overflow-hidden rounded-2xl p-4 border transition-all duration-500
+                                ${conf.bg} ${conf.border}
+                            `}>
+                                {/* Background Shimmer */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12 translate-x-[-100%] animate-scan pointer-events-none"></div>
+
+                                <div className="flex justify-between items-end mb-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className={`p-1.5 rounded-lg bg-black/20 backdrop-blur-sm ${conf.color}`}>
+                                            <conf.icon size={16} className={learningStats.understandingScore > 80 ? 'animate-pulse' : ''}/>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Confidence Level</div>
+                                            <div className={`text-sm font-extrabold tracking-tight ${conf.color}`}>
+                                                {conf.label}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className={`text-3xl font-black ${conf.color}`}>
+                                            {learningStats.understandingScore}
+                                            <span className="text-sm font-medium opacity-60 ml-0.5">%</span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
+
+                                {/* Liquid Bar */}
+                                <div className="h-2.5 w-full bg-slate-900/50 rounded-full overflow-hidden p-[1px]">
                                     <div 
-                                        className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
-                                        style={{ width: `${learningStats?.understandingScore || 0}%` }}
-                                    ></div>
+                                        className={`h-full rounded-full bg-gradient-to-r ${conf.gradient} shadow-[0_0_12px_rgba(0,0,0,0.5)] transition-all duration-1000 ease-out relative`}
+                                        style={{ width: `${learningStats.understandingScore}%` }}
+                                    >
+                                        <div className="absolute top-0 right-0 h-full w-2 bg-white/40 blur-[2px]"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {/* Chat List */}
-                    <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32 space-y-6 custom-scrollbar scroll-smooth" ref={scrollRef}>
+                    <div className="flex-1 overflow-y-auto px-4 pt-0 pb-32 space-y-6 custom-scrollbar scroll-smooth" ref={scrollRef}>
                             {messages.map((msg) => {
                             if (msg.role === 'system') {
                                 return (
