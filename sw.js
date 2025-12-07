@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumi-cache-v1';
+const CACHE_NAME = 'lumi-cache-v2';
 
 // Install event - cache core assets
 self.addEventListener('install', (event) => {
@@ -20,34 +20,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - Network first, then cache (safest for streaming apps)
+// Fetch event - Stale While Revalidate for assets, Network Only for APIs
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests or API calls
-  if (!event.request.url.startsWith(self.location.origin)) {
+  const url = new URL(event.request.url);
+
+  // Skip cross-origin requests, API calls, or POST requests
+  if (!url.origin.includes(self.location.origin) || event.request.method !== 'GET') {
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Check if we received a valid response
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse); // Fallback to cache on network fail
 
-        // Clone the response
-        const responseToCache = response.clone();
-
-        caches.open(CACHE_NAME)
-          .then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-
-        return response;
-      })
-      .catch(() => {
-        // If network fails, try to serve from cache
-        return caches.match(event.request);
-      })
+        return cachedResponse || fetchPromise;
+      });
+    })
   );
 });

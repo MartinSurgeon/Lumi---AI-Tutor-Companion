@@ -1,7 +1,5 @@
-
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut, HelpCircle, Volume2, MessageSquare, Radio } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, Play, Sparkles, User, Bot, Zap, ImageIcon, Settings, Monitor, Search, BrainCircuit, TrendingUp, Award, BookOpen, Keyboard, Send, Clock, AlertCircle, ScanEye, Copy, Check, Heart, Flag, Ghost, RefreshCw, LogOut, HelpCircle, Volume2, MessageSquare, Radio, Download } from 'lucide-react';
 import SetupModal from './components/SetupModal';
 import Waveform from './components/Waveform';
 import { StudentProfile, ConnectionStatus, ImageResolution } from './types';
@@ -51,9 +49,32 @@ const App: React.FC = () => {
   const [teacherInput, setTeacherInput] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // PWA Install Prompt Listener
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+        }
+        setDeferredPrompt(null);
+      });
+    }
+  };
 
   // Save profile to LocalStorage whenever it changes
   useEffect(() => {
@@ -191,13 +212,23 @@ const App: React.FC = () => {
         
         {/* Profile / Stats Pill */}
         <div className="flex items-center gap-3 pointer-events-auto">
+           {deferredPrompt && (
+              <button
+                onClick={handleInstallClick}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-600/80 hover:bg-indigo-500 backdrop-blur-md text-xs font-bold text-white transition-all border border-indigo-400/30 shadow-lg"
+              >
+                <Download size={14} />
+                Install App
+              </button>
+           )}
+
            {isConnected && learningStats && (
                <div className={`hidden md:flex px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wide bg-slate-900/80 backdrop-blur-md ${
-                    learningStats.difficultyLevel === 'Advanced' ? 'bg-red-900/30 border-red-500/50 text-red-300' :
-                    learningStats.difficultyLevel === 'Intermediate' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
+                    learningStats?.difficultyLevel === 'Advanced' ? 'bg-red-900/30 border-red-500/50 text-red-300' :
+                    learningStats?.difficultyLevel === 'Intermediate' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
                     'bg-emerald-900/30 border-emerald-500/50 text-emerald-300'
                 }`}>
-                    {learningStats.difficultyLevel || 'Beginner'} Mode
+                    {learningStats?.difficultyLevel || 'Beginner'} Mode
                </div>
            )}
            
@@ -336,23 +367,36 @@ const App: React.FC = () => {
                         </div>
 
                         {/* Primary Call To Action - Centered & Visible */}
-                        <button 
-                            onClick={connect}
-                            disabled={isConnecting}
-                            className={`w-full flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-105 active:scale-95 transition-all group ${isConnecting ? 'opacity-50 cursor-not-allowed' : 'animate-pulse-glow'}`}
-                        >
-                            {isConnecting ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
-                                    <span>Connecting...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5 text-fuchsia-600 group-hover:rotate-12 transition-transform" />
-                                    <span>Start Learning</span>
-                                </>
+                        <div className="space-y-4">
+                            <button 
+                                onClick={connect}
+                                disabled={isConnecting}
+                                className={`w-full flex items-center justify-center gap-3 bg-white text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] hover:scale-105 active:scale-95 transition-all group ${isConnecting ? 'opacity-50 cursor-not-allowed' : 'animate-pulse-glow'}`}
+                            >
+                                {isConnecting ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-fuchsia-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Connecting...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="w-5 h-5 text-fuchsia-600 group-hover:rotate-12 transition-transform" />
+                                        <span>Start Learning</span>
+                                    </>
+                                )}
+                            </button>
+                            
+                            {/* Mobile Install Button (Visible here when offline) */}
+                            {deferredPrompt && (
+                                <button
+                                    onClick={handleInstallClick}
+                                    className="md:hidden w-full flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-white transition-colors py-2"
+                                >
+                                    <Download size={16} />
+                                    Install App
+                                </button>
                             )}
-                        </button>
+                        </div>
                         
                         <div className="flex items-center justify-center gap-6 text-xs text-slate-500">
                             <span className="flex items-center gap-1"><Video size={12}/> Video Supported</span>
@@ -371,12 +415,12 @@ const App: React.FC = () => {
                                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
                                         <BrainCircuit size={12} /> Lumi's Confidence
                                     </span>
-                                    <span className="text-[10px] text-white font-bold">{learningStats.understandingScore || 0}%</span>
+                                    <span className="text-[10px] text-white font-bold">{learningStats?.understandingScore || 0}%</span>
                                 </div>
                                 <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
                                     <div 
                                         className="h-full bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 transition-all duration-1000 ease-out"
-                                        style={{ width: `${learningStats.understandingScore || 0}%` }}
+                                        style={{ width: `${learningStats?.understandingScore || 0}%` }}
                                     ></div>
                                 </div>
                             </div>
